@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { AlertTriangle, ExternalLink, Wand2, RefreshCw, Loader2, Copy, Check, Play } from "lucide-react";
+import { useProfile } from "@/lib/profile-context";
 
 interface WorstSite {
   id: number;
@@ -22,6 +23,7 @@ function getScoreBadge(score: number) {
 }
 
 export default function WorstWebsites() {
+  const { selectedProfileId } = useProfile();
   const [sites, setSites] = useState<WorstSite[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +35,7 @@ export default function WorstWebsites() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/worst-websites");
+      const res = await fetch(`/api/worst-websites?profileId=${encodeURIComponent(selectedProfileId)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Fehler");
       setSites(Array.isArray(data) ? data : []);
@@ -43,20 +45,20 @@ export default function WorstWebsites() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedProfileId]);
 
   useEffect(() => {
     fetchWorst();
   }, [fetchWorst]);
 
-  const startAnalysis = async (limit = 30) => {
+  const startAnalysis = async (limit = 10) => {
     setAnalyzing(true);
     setAnalyzeMsg(null);
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ limit }),
+        body: JSON.stringify({ limit, profileId: selectedProfileId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Analyse fehlgeschlagen");
@@ -75,10 +77,13 @@ export default function WorstWebsites() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const worstScore = sites.length > 0 ? Math.min(...sites.map((s) => s.score)) : 0;
+  const worst3TooGood = sites.length >= 3 && worstScore >= 5;
+
   const analyzeButton = (
     <button
       type="button"
-      onClick={() => startAnalysis(30)}
+      onClick={() => startAnalysis(10)}
       disabled={analyzing}
       className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-60"
     >
@@ -87,7 +92,24 @@ export default function WorstWebsites() {
       ) : (
         <Play className="h-4 w-4" />
       )}
-      {analyzing ? "Analyse läuft..." : "Analyse starten (30 Websites)"}
+      {analyzing ? "Analyse läuft..." : "Analyse starten (10 Websites)"}
+    </button>
+  );
+
+  const analyzeNext10Button = sites.length > 0 && (
+    <button
+      type="button"
+      onClick={() => startAnalysis(10)}
+      disabled={analyzing}
+      className="flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 transition hover:bg-amber-100 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50 disabled:opacity-60"
+      title="Analysiere die nächsten 10 Websites aus den OSM-Daten."
+    >
+      {analyzing ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <Play className="h-4 w-4" />
+      )}
+      Nächste 10 analysieren
     </button>
   );
 
@@ -138,8 +160,9 @@ export default function WorstWebsites() {
               Die 3 Websites mit dem niedrigsten Score. Sollen sie verbessert werden?
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {analyzeButton}
+            {analyzeNext10Button}
             <button
               type="button"
               onClick={fetchWorst}
@@ -152,6 +175,11 @@ export default function WorstWebsites() {
         </div>
         {analyzeMsg && (
           <p className="mt-3 text-sm text-emerald-600 dark:text-emerald-400">{analyzeMsg}</p>
+        )}
+        {worst3TooGood && (
+          <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
+            Die schlechtesten Websites sind noch relativ gut (Score ≥5). Nutze „Nächste 10 analysieren“, um weitere zu finden.
+          </p>
         )}
 
         <div className="mt-8 grid gap-6 sm:grid-cols-1 lg:grid-cols-3">

@@ -1,8 +1,8 @@
 """
-Test-Startdatei: Screenshot von URL aus Backend-Config → weitergeben an Analyse.
+Test-Startdatei: Analyse läuft über die aktuellen Profil-Datenbanken (osm_data).
+Holt Website-URLs aus Supabase osm_data (pro Profil) und analysiert sie mit Gemini.
 """
 
-import json
 import sys
 from pathlib import Path
 
@@ -12,37 +12,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from dotenv import load_dotenv
 
 from backend.config import BACKEND_DIR
-from backend.analyze_website import analyze_screenshot, take_screenshot
 
 load_dotenv(BACKEND_DIR / ".env")
-from backend.config import BACKEND_DIR
 
-CONFIG_PATH = BACKEND_DIR / "config.json"
+from backend.batch_analyze import run_batch, BATCH_SIZE
 
 
 def main():
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        config = json.load(f)
-
-    urls = config.get("urls", config.get("url", []))
-    if isinstance(urls, str):
-        urls = [urls]
-
-    if not urls:
-        print("Keine URLs in backend/config.json gefunden.")
-        sys.exit(1)
-
-    url = urls[0]
-    print(f"Test: Screenshot von {url} -> Analyse mit Gemini\n")
-
-    # 1. Screenshot erstellen
-    screenshot_bytes = take_screenshot(url)
-    print(f"Screenshot erstellt ({len(screenshot_bytes):,} Bytes)\n")
-
-    # 2. Screenshot weitergeben an Analyse
-    result = analyze_screenshot(screenshot_bytes, url)
-
-    print(f"\nFertig. Score: {result['score']}/10")
+    limit = int(sys.argv[1]) if len(sys.argv) > 1 else BATCH_SIZE
+    print("Analysiere Websites aus den Profil-Datenbanken (osm_data)...\n")
+    run_batch(limit=limit)
 
 
 if __name__ == "__main__":

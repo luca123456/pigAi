@@ -28,16 +28,20 @@ export async function GET(req: Request) {
       );
     }
 
-    const { searchParams } = new URL(req.url);
+    const { searchParams } = new URL(req.url ?? "");
     const limit = Math.min(parseInt(searchParams.get("limit") ?? "500", 10), 1000);
     const elementType = searchParams.get("element_type");
+    const profileId =
+      searchParams.get("profileId")?.trim() ||
+      "00000000-0000-0000-0000-000000000001";
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
     const table = "osm_data_with_coords";
     let query = supabase
       .from(table)
-      .select("id, element_type, tags, lat, lon, created_at, updated_at")
+      .select("profile_id, id, element_type, tags, lat, lon, created_at, updated_at")
+      .eq("profile_id", profileId)
       .order("updated_at", { ascending: false })
       .limit(limit);
 
@@ -52,7 +56,8 @@ export async function GET(req: Request) {
       // Fallback: osm_data ohne Koordinaten, falls View nicht existiert
       const fallback = supabase
         .from("osm_data")
-        .select("id, element_type, tags, created_at")
+        .select("profile_id, id, element_type, tags, created_at")
+        .eq("profile_id", profileId)
         .not("location", "is", null)
         .order("updated_at", { ascending: false })
         .limit(limit);

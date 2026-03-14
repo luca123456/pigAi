@@ -3,8 +3,9 @@ import { createClient } from "@supabase/supabase-js";
 
 /**
  * GET /api/worst-websites – gibt die 3 schlechtesten analysierten Websites zurück
+ * Query: ?profileId=uuid
  */
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -16,12 +17,17 @@ export async function GET() {
       );
     }
 
+    const { searchParams } = new URL(req.url ?? "");
+    const profileId =
+      searchParams.get("profileId")?.trim() ||
+      "00000000-0000-0000-0000-000000000001";
+
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-    // Dedupliziert: nur die neueste Analyse pro URL, sortiert nach Score (aufsteigend)
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("website_analysis")
       .select("*")
+      .eq("profile_id", profileId)
       .order("score", { ascending: true })
       .order("created_at", { ascending: false })
       .limit(50);
@@ -31,6 +37,20 @@ export async function GET() {
         { error: `Supabase: ${error.message}` },
         { status: 500 }
       );
+    }
+
+    // Fallback: Wenn gewähltes Profil keine Ergebnisse hat, zeige von anderem Profil
+    if ((data ?? []).length === 0) {
+      const { data: fallbackData } = await supabase
+        .from("website_analysis")
+        .select("*")
+        .order("score", { ascending: true })
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (fallbackData && fallbackData.length > 0) {
+        const firstProfileId = fallbackData[0].profile_id as string;
+        data = fallbackData.filter((r) => r.profile_id === firstProfileId);
+      }
     }
 
     // Deduplizieren: nur die neueste Analyse pro URL behalten

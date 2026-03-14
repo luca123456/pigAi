@@ -11,7 +11,7 @@ export interface AnalysisResult {
   created_at: string;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -26,10 +26,16 @@ export async function GET() {
       );
     }
 
+    const { searchParams } = new URL(req.url);
+    const profileId =
+      searchParams.get("profileId")?.trim() ||
+      "00000000-0000-0000-0000-000000000001";
+
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("website_analysis")
       .select("*")
+      .eq("profile_id", profileId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -38,6 +44,19 @@ export async function GET() {
         { error: `Supabase: ${error.message} (Tabelle website_analysis existiert? Migration ausführen: npx supabase db push)` },
         { status: 500 }
       );
+    }
+
+    // Fallback: Wenn gewähltes Profil keine Ergebnisse hat, zeige Ergebnisse eines anderen Profils
+    if ((data ?? []).length === 0) {
+      const { data: fallbackData } = await supabase
+        .from("website_analysis")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (fallbackData && fallbackData.length > 0) {
+        const firstProfileId = fallbackData[0].profile_id as string;
+        data = fallbackData.filter((r) => r.profile_id === firstProfileId);
+      }
     }
 
     // Map to expected format (timestamp für Kompatibilität mit Frontend)

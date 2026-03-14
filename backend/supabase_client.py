@@ -28,13 +28,38 @@ def _rest_url(path: str) -> str:
     return f"{url}/rest/v1/{path}"
 
 
-def table_select(table: str, columns: str = "*", limit: int = 500) -> list[dict[str, Any]]:
-    """SELECT von einer Tabelle."""
+def table_select(
+    table: str,
+    columns: str = "*",
+    limit: int = 500,
+    filters: dict[str, Any] | None = None,
+    order: str | None = None,
+) -> list[dict[str, Any]]:
+    """SELECT von einer Tabelle. filters: {column: value} für eq-Filter. order: z.B. 'id.asc'."""
+    params: dict[str, str] = {"select": columns, "limit": str(limit)}
+    if filters:
+        for col, val in filters.items():
+            params[col] = f"eq.{val}"
+    if order:
+        params["order"] = order
     with httpx.Client(timeout=30) as client:
         r = client.get(
             _rest_url(table),
             headers={**_headers(), "Accept": "application/json"},
-            params={"select": columns, "limit": str(limit)},
+            params=params,
+        )
+        r.raise_for_status()
+        return r.json() if r.content else []
+
+
+def rpc(name: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+    """RPC-Aufruf: POST /rest/v1/rpc/{name}"""
+    url = f"{os.getenv('SUPABASE_URL', '').rstrip('/')}/rest/v1/rpc/{name}"
+    with httpx.Client(timeout=30) as client:
+        r = client.post(
+            url,
+            headers={**_headers(), "Accept": "application/json"},
+            json=params,
         )
         r.raise_for_status()
         return r.json() if r.content else []
@@ -109,13 +134,28 @@ class _SelectBuilder:
         self._table = table
         self._columns = columns
         self._limit = 500
+        self._filters: dict[str, Any] = {}
+        self._order: str | None = None
 
     def limit(self, n: int):
         self._limit = n
         return self
 
+    def eq(self, column: str, value: Any):
+        self._filters[column] = value
+        return self
+
+    def order(self, order_spec: str):
+        """PostgREST: order_spec z.B. 'id.asc' oder 'id.asc,element_type.asc'"""
+        self._order = order_spec
+        return self
+
     def execute(self):
-        data = table_select(self._table, self._columns, self._limit)
+        data = table_select(
+            self._table, self._columns, self._limit,
+            filters=self._filters if self._filters else None,
+            order=self._order,
+        )
         return type("Response", (), {"data": data})()
 
 

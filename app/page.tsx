@@ -1,7 +1,5 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { CITIES, BUSINESS_TYPES } from "@/lib/types";
 import {
   mockProjects,
   mockSentRequests,
@@ -14,41 +12,16 @@ import CurrentProjects from "@/components/CurrentProjects";
 import SentRequests from "@/components/SentRequests";
 import WebsiteScores from "@/components/WebsiteScores";
 import WorstWebsites from "@/components/WorstWebsites";
-import OverpassQuery from "@/components/OverpassQuery";
 import Footer from "@/components/Footer";
 
-function pickRandom<T>(arr: readonly T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
 export default function Home() {
-  const [city, setCity] = useState("");
-  const [betriebsart, setBetriebsart] = useState("");
-
-  const handleSearch = useCallback(() => {
-    // Vorbereitet für spätere Backend-Suche
-    console.log("Suche:", { city, betriebsart });
-  }, [city, betriebsart]);
-
-  const handleRandomize = useCallback(() => {
-    setCity(pickRandom(CITIES));
-    setBetriebsart(pickRandom(BUSINESS_TYPES));
-  }, []);
-
   const stats = getStats(mockProjects, mockSentRequests);
 
   return (
     <div className="min-h-screen bg-white dark:bg-zinc-950">
       <Header />
       <main>
-        <Hero
-          city={city}
-          betriebsart={betriebsart}
-          onCityChange={setCity}
-          onBetriebsartChange={setBetriebsart}
-          onSearch={handleSearch}
-          onRandomize={handleRandomize}
-        />
+        <Hero />
         <StatsCards
           activeProjects={stats.activeProjects}
           requestsSent={stats.requestsSent}
@@ -58,7 +31,6 @@ export default function Home() {
         <SentRequests requests={mockSentRequests} />
         <WorstWebsites />
         <WebsiteScores />
-        <OverpassQuery />
       </main>
       <Footer />
     </div>

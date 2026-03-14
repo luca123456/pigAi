@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import ProfileSelector from "@/components/ProfileSelector";
 
 export default function Header() {
   return (
@@ -10,12 +13,13 @@ export default function Header() {
         >
           pigAi
         </Link>
-        <nav className="flex items-center gap-6 text-sm font-medium text-zinc-600 dark:text-zinc-400">
+        <nav className="flex items-center gap-4 text-sm font-medium text-zinc-600 dark:text-zinc-400">
+          <ProfileSelector />
           <Link
-            href="#overpass"
+            href="#search"
             className="transition-colors hover:text-zinc-900 dark:hover:text-zinc-50"
           >
-            Overpass
+            Suchen
           </Link>
           <Link
             href="#"

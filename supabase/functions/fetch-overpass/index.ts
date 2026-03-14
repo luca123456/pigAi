@@ -4,10 +4,66 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const OVERPASS_API_URL = "https://overpass-api.de/api/interpreter";
-const OVERPASS_RATE_LIMIT_STATUS = 429;
-const OVERPASS_TOO_MANY_REQUESTS_STATUS = 503;
-const RETRY_DELAY_MS = 5000;
-const MAX_RETRIES = 3;
+const RATE_LIMIT_STATUS = 429;
+const TOO_MANY_REQUESTS_STATUS = 503;
+const MAX_RETRIES = 5;
+const BASE_DELAY_MS = 2000; // 2s, 4s, 8s, 16s, 32s
+const MAX_DELAY_MS = 60_000; // Cap at 60 seconds
+
+// =============================================================================
+// fetchWithRetry: Exponential backoff + Retry-After + jitter
+// =============================================================================
+
+type FetchWithRetryOptions = RequestInit & { maxRetries?: number };
+
+async function fetchWithRetry(
+  input: RequestInfo | URL,
+  init?: FetchWithRetryOptions
+): Promise<Response> {
+  const maxRetries = init?.maxRetries ?? MAX_RETRIES;
+  const { maxRetries: _omit, ...fetchInit } = init ?? {};
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const response = await fetch(input, fetchInit);
+
+    if (response.status !== RATE_LIMIT_STATUS && response.status !== TOO_MANY_REQUESTS_STATUS) {
+      return response;
+    }
+
+    if (attempt === maxRetries) {
+      console.warn(`[fetchWithRetry] 429/503 after ${maxRetries} attempts. Giving up.`);
+      return response;
+    }
+
+    // Use Retry-After header if present (seconds)
+    const retryAfterHeader = response.headers.get("Retry-After");
+    let delayMs: number;
+
+    if (retryAfterHeader) {
+      const parsed = parseInt(retryAfterHeader, 10);
+      delayMs = Number.isNaN(parsed) ? BASE_DELAY_MS * Math.pow(2, attempt - 1) : parsed * 1000;
+      console.warn(
+        `[fetchWithRetry] 429/503 received. Retry-After: ${retryAfterHeader}s. Using ${delayMs}ms delay (attempt ${attempt}/${maxRetries}).`
+      );
+    } else {
+      // Exponential backoff: 2^attempt seconds (2, 4, 8, 16, 32)
+      delayMs = Math.min(BASE_DELAY_MS * Math.pow(2, attempt - 1), MAX_DELAY_MS);
+      console.warn(
+        `[fetchWithRetry] 429/503 received. No Retry-After header. Exponential backoff: ${delayMs}ms (attempt ${attempt}/${maxRetries}).`
+      );
+    }
+
+    // Add jitter (0–25% of delay) to prevent thundering herd
+    const jitter = Math.random() * 0.25 * delayMs;
+    const totalDelay = delayMs + jitter;
+    console.warn(`[fetchWithRetry] Waiting ${Math.round(totalDelay)}ms before retry...`);
+
+    await new Promise((resolve) => setTimeout(resolve, totalDelay));
+  }
+
+  // Unreachable: loop always returns. Satisfy TypeScript.
+  return fetch(input, fetchInit);
+}
 
 // =============================================================================
 // Overpass API Response Interfaces
@@ -116,51 +172,30 @@ function elementToRow(element: OverpassElement): OsmDataRow | null {
 }
 
 // =============================================================================
-// Helper: Fetch from Overpass API with retry on rate limit
+// Helper: Fetch from Overpass API (uses fetchWithRetry for 429 handling)
 // =============================================================================
 
 async function fetchOverpass(query: string): Promise<OverpassResponse> {
-  let lastError: Error | null = null;
+  const response = await fetchWithRetry(OVERPASS_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: `data=${encodeURIComponent(query)}`,
+    maxRetries: MAX_RETRIES,
+  });
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const response = await fetch(OVERPASS_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: `data=${encodeURIComponent(query)}`,
-      });
-
-      if (response.status === OVERPASS_RATE_LIMIT_STATUS || response.status === OVERPASS_TOO_MANY_REQUESTS_STATUS) {
-        const retryAfter = response.headers.get("Retry-After");
-        const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : RETRY_DELAY_MS;
-        console.warn(`Overpass API rate limited (${response.status}). Retrying in ${delay}ms (attempt ${attempt}/${MAX_RETRIES})`);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        continue;
-      }
-
-      if (!response.ok) {
-        throw new Error(`Overpass API error: ${response.status} ${response.statusText}`);
-      }
-
-      const data: OverpassResponse = await response.json();
-
-      if (!data.elements) {
-        throw new Error("Invalid Overpass response: missing elements array");
-      }
-
-      return data;
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      if (attempt < MAX_RETRIES) {
-        console.warn(`Attempt ${attempt} failed: ${lastError.message}. Retrying...`);
-        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-      }
-    }
+  if (!response.ok) {
+    throw new Error(`Overpass API error: ${response.status} ${response.statusText}`);
   }
 
-  throw lastError ?? new Error("Overpass API request failed after retries");
+  const data: OverpassResponse = await response.json();
+
+  if (!data.elements) {
+    throw new Error("Invalid Overpass response: missing elements array");
+  }
+
+  return data;
 }
 
 // =============================================================================

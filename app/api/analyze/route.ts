@@ -1,20 +1,24 @@
 import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
-import path from "path";
 
 const execAsync = promisify(exec);
 
 /**
  * POST /api/analyze – startet die Batch-Analyse (Python-Backend)
  * Body (optional): { limit?: number, url?: string }
- *  - limit: Anzahl der zu analysierenden Websites (max 30)
+ *  - limit: Anzahl der zu analysierenden Websites (Standard 10, max 30)
  *  - url: einzelne URL analysieren
  */
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { limit, url } = body;
+    const { limit, url, profileId } = body;
+
+    const profileUuid =
+      typeof profileId === "string" && profileId.trim()
+        ? profileId.trim()
+        : "00000000-0000-0000-0000-000000000001";
 
     const projectRoot = process.cwd();
     const pythonCmd = process.platform === "win32" ? "python" : "python3";
@@ -23,7 +27,7 @@ export async function POST(req: Request) {
     if (url?.trim()) {
       command = `${pythonCmd} -m backend.analyze_website "${url.trim()}"`;
     } else {
-      const n = Math.min(Math.max(parseInt(limit ?? "30", 10) || 30, 1), 30);
+      const n = Math.min(Math.max(parseInt(limit ?? "10", 10) || 10, 1), 30);
       command = `${pythonCmd} -m backend.batch_analyze ${n}`;
     }
 
@@ -34,6 +38,7 @@ export async function POST(req: Request) {
         ...process.env,
         PYTHONPATH: projectRoot,
         PYTHONIOENCODING: "utf-8",
+        PIGAI_PROFILE_ID: profileUuid,
       },
     });
 

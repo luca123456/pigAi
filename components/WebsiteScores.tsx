@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Globe, RefreshCw, Loader2, Play } from "lucide-react";
+import { useProfile } from "@/lib/profile-context";
 import type { AnalysisResult } from "@/lib/types";
 
 function formatDate(iso: string) {
@@ -26,6 +27,7 @@ function getScoreColor(score: number) {
 }
 
 export default function WebsiteScores() {
+  const { selectedProfileId } = useProfile();
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,11 +35,11 @@ export default function WebsiteScores() {
   const [analyzeMsg, setAnalyzeMsg] = useState<string | null>(null);
   const [singleUrl, setSingleUrl] = useState("");
 
-  const fetchResults = async () => {
+  const fetchResults = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/results");
+      const res = await fetch(`/api/results?profileId=${encodeURIComponent(selectedProfileId)}`);
       if (!res.ok) throw new Error("Fehler beim Laden");
       const data = await res.json();
       setResults(Array.isArray(data) ? data : []);
@@ -47,7 +49,7 @@ export default function WebsiteScores() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedProfileId]);
 
   const analyzeUrl = async () => {
     if (!singleUrl.trim()) return;
@@ -57,7 +59,7 @@ export default function WebsiteScores() {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: singleUrl.trim() }),
+        body: JSON.stringify({ url: singleUrl.trim(), profileId: selectedProfileId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Analyse fehlgeschlagen");
@@ -73,7 +75,7 @@ export default function WebsiteScores() {
 
   useEffect(() => {
     fetchResults();
-  }, []);
+  }, [fetchResults]);
 
   if (loading) {
     return (

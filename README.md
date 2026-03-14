@@ -47,11 +47,13 @@ python -m backend.analyze_website https://example.com
 
 Ergebnisse werden in Supabase gespeichert (`website_analysis` + Screenshots in Storage).
 
-**Test-Run** (Screenshot aus Config → Analyse):
+**Test-Run** (Analyse über Profil-Datenbanken):
 ```bash
 python -m backend.test_run
+# Optional: Limit angeben (Standard: 30)
+python -m backend.test_run 10
 ```
-Nutzt die erste URL aus `backend/config.json`.
+Holt Website-URLs aus Supabase `osm_data` (pro Profil) und analysiert sie. Profil via `PIGAI_PROFILE_ID` in `backend/.env` (Standard: Standard-Profil).
 
 ## Learn More
 
