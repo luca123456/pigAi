@@ -20,6 +20,19 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Screenshots von URLs
+
+Das Script `screenshot_urls.py` erstellt Screenshots von Webseiten. Nutzung:
+
+```bash
+cd scripts
+pip install -r requirements.txt
+playwright install chromium
+python screenshot_urls.py
+```
+
+URLs in `backend/config.json` anpassen. Screenshots landen im Ordner `backend/screenshots/`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
