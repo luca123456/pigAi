@@ -33,7 +33,7 @@ def main():
         sys.exit(1)
 
     url = urls[0]
-    print(f"Test: Screenshot von {url} → Analyse mit Gemini\n")
+    print(f"Test: Screenshot von {url} -> Analyse mit Gemini\n")
 
     # 1. Screenshot erstellen
     screenshot_bytes = take_screenshot(url)
@@ -42,7 +42,7 @@ def main():
     # 2. Screenshot weitergeben an Analyse
     result = analyze_screenshot(screenshot_bytes, url)
 
-    print(f"\n✓ Fertig. Score: {result['score']}/10")
+    print(f"\nFertig. Score: {result['score']}/10")
 
 
 if __name__ == "__main__":

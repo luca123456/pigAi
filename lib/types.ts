@@ -26,6 +26,17 @@ export interface SentRequest {
   status: RequestStatus;
 }
 
+export interface AnalysisResult {
+  id?: number;
+  url: string;
+  score: number;
+  reasoning: string;
+  lovable_prompt: string;
+  screenshot_path?: string | null;
+  created_at?: string;
+  timestamp: string;
+}
+
 export const CITIES = [
   "Berlin",
   "Hamburg",

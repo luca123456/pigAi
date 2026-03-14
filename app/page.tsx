@@ -12,6 +12,9 @@ import Hero from "@/components/Hero";
 import StatsCards from "@/components/StatsCards";
 import CurrentProjects from "@/components/CurrentProjects";
 import SentRequests from "@/components/SentRequests";
+import WebsiteScores from "@/components/WebsiteScores";
+import WorstWebsites from "@/components/WorstWebsites";
+import OverpassQuery from "@/components/OverpassQuery";
 import Footer from "@/components/Footer";
 
 function pickRandom<T>(arr: readonly T[]): T {
@@ -53,6 +56,9 @@ export default function Home() {
         />
         <CurrentProjects projects={mockProjects} />
         <SentRequests requests={mockSentRequests} />
+        <WorstWebsites />
+        <WebsiteScores />
+        <OverpassQuery />
       </main>
       <Footer />
     </div>

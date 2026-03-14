@@ -31,7 +31,7 @@ playwright install chromium
 python screenshot_urls.py
 ```
 
-URLs in `backend/config.json` anpassen. Screenshots landen im Ordner `backend/screenshots/`.
+URLs in `backend/config.json` anpassen. Screenshots werden in Supabase Storage hochgeladen.
 
 ## Website-Analyse (Gemini)
 
@@ -41,11 +41,11 @@ Das Backend-Modul bewertet Webseiten per Screenshot mit Gemini 1.5 Flash:
 pip install -r backend/requirements.txt
 playwright install chromium
 cp backend/.env.example backend/.env
-# GEMINI_API_KEY in backend/.env eintragen (https://aistudio.google.com/apikey)
+# GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY in backend/.env eintragen
 python -m backend.analyze_website https://example.com
 ```
 
-Ergebnisse werden in `backend/results.json` gespeichert.
+Ergebnisse werden in Supabase gespeichert (`website_analysis` + Screenshots in Storage).
 
 **Test-Run** (Screenshot aus Config → Analyse):
 ```bash

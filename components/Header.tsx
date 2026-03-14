@@ -12,10 +12,10 @@ export default function Header() {
         </Link>
         <nav className="flex items-center gap-6 text-sm font-medium text-zinc-600 dark:text-zinc-400">
           <Link
-            href="#"
+            href="#overpass"
             className="transition-colors hover:text-zinc-900 dark:hover:text-zinc-50"
           >
-            Dashboard
+            Overpass
           </Link>
           <Link
             href="#"

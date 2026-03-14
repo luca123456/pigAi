@@ -2,13 +2,13 @@
 
 from pathlib import Path
 
-# Pfade (relativ zum Backend-Ordner)
+# Pfade (relativ zum Backend-Ordner) – nur noch für Fallback/Legacy
 BACKEND_DIR = Path(__file__).parent
-RESULTS_PATH = BACKEND_DIR / "results.json"
-SCREENSHOTS_DIR = BACKEND_DIR / "screenshots"
+RESULTS_PATH = BACKEND_DIR / "results.json"  # deprecated, wird nicht mehr verwendet
+SCREENSHOTS_DIR = BACKEND_DIR / "screenshots"  # deprecated, Supabase Storage wird verwendet
 
 # Gemini
-GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 # Playwright
 VIEWPORT = {"width": 1280, "height": 800}

@@ -1,5 +1,6 @@
 """
 Backend-Modul: Webseiten-Screenshots, Gemini-Bewertung und Ergebnis-Speicherung.
+Speichert Ergebnisse in Supabase (website_analysis + screenshots Storage).
 """
 
 import io
@@ -8,15 +9,16 @@ import os
 import re
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 from PIL import Image
 
 # Projektroot für Imports (funktioniert bei python -m backend.analyze_website)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 
@@ -24,8 +26,6 @@ from backend.config import (
     BACKEND_DIR,
     GEMINI_MODEL,
     PAGE_LOAD_WAIT,
-    RESULTS_PATH,
-    SCREENSHOTS_DIR,
     USER_AGENT,
     VIEWPORT,
 )
@@ -64,17 +64,16 @@ def _call_gemini(screenshot_bytes: bytes) -> dict:
             "GEMINI_API_KEY nicht gesetzt. Bitte in .env definieren oder als Umgebungsvariable setzen."
         )
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(GEMINI_MODEL)
-
+    client = genai.Client(api_key=api_key)
     image = Image.open(io.BytesIO(screenshot_bytes))
 
-    response = model.generate_content(
-        [GEMINI_PROMPT, image],
-        generation_config=genai.GenerationConfig(temperature=0.2),
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=[GEMINI_PROMPT, image],
+        config=types.GenerateContentConfig(temperature=0.2),
     )
 
-    text = response.text.strip()
+    text = (response.text or "").strip()
     # Fallback: JSON aus Markdown-Codeblock extrahieren
     json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
     if json_match:
@@ -82,25 +81,67 @@ def _call_gemini(screenshot_bytes: bytes) -> dict:
     return json.loads(text)
 
 
-def _save_result(url: str, score: int, reasoning: str, lovable_prompt: str) -> None:
-    """Speichert das Ergebnis in results.json (an Liste anhängen)."""
-    entry = {
-        "url": url,
-        "score": score,
-        "reasoning": reasoning,
-        "lovable_prompt": lovable_prompt,
-        "timestamp": datetime.now().isoformat(),
-    }
+def _url_to_filename(url: str) -> str:
+    """Konvertiert eine URL in einen sicheren Dateinamen."""
+    parsed = urlparse(url)
+    hostname = parsed.netloc or parsed.path
+    name = hostname.replace("www.", "").replace(".", "_")
+    name = re.sub(r"[^\w\-]", "", name)
+    return f"{name}.png"
 
-    results = []
-    if RESULTS_PATH.exists():
-        with open(RESULTS_PATH, encoding="utf-8") as f:
-            results = json.load(f)
 
-    results.append(entry)
+def _upload_screenshot(url: str, screenshot_bytes: bytes) -> str | None:
+    """Lädt Screenshot in Supabase Storage hoch. Gibt die öffentliche URL zurück oder None."""
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+    if not supabase_url or not supabase_key:
+        return None
 
-    with open(RESULTS_PATH, "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
+    try:
+        from backend.supabase_client import get_client
+
+        client = get_client()
+        path = _url_to_filename(url)
+        client.storage.from_("screenshots").upload(
+            path=path,
+            file=io.BytesIO(screenshot_bytes),
+            file_options={"content-type": "image/png", "upsert": "true"},
+        )
+        return client.storage.from_("screenshots").get_public_url(path)
+    except Exception as e:
+        print(f"Warnung: Screenshot-Upload fehlgeschlagen: {e}")
+        return None
+
+
+def _save_result(
+    url: str,
+    score: int,
+    reasoning: str,
+    lovable_prompt: str,
+    screenshot_path: str | None = None,
+) -> None:
+    """Speichert das Ergebnis in Supabase (website_analysis)."""
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+    if not supabase_url or not supabase_key:
+        print("Warnung: SUPABASE_URL/SUPABASE_SERVICE_KEY nicht gesetzt. Ergebnis wird nicht gespeichert.")
+        return
+
+    try:
+        from backend.supabase_client import get_client
+
+        client = get_client()
+        client.table("website_analysis").insert(
+            {
+                "url": url,
+                "score": score,
+                "reasoning": reasoning,
+                "lovable_prompt": lovable_prompt,
+                "screenshot_path": screenshot_path,
+            }
+        ).execute()
+    except Exception as e:
+        print(f"Fehler beim Speichern in Supabase: {e}")
 
 
 def take_screenshot(url: str) -> bytes:
@@ -110,7 +151,7 @@ def take_screenshot(url: str) -> bytes:
 
 def analyze_screenshot(screenshot_bytes: bytes, url: str) -> dict:
     """
-    Bewertet einen Screenshot mit Gemini und speichert das Ergebnis.
+    Bewertet einen Screenshot mit Gemini und speichert das Ergebnis in Supabase.
     Nützlich wenn der Screenshot bereits vorliegt.
     """
     result = _call_gemini(screenshot_bytes)
@@ -118,10 +159,12 @@ def analyze_screenshot(screenshot_bytes: bytes, url: str) -> dict:
     reasoning = result.get("reasoning", "")
     lovable_prompt = result.get("lovable_prompt", "")
 
-    _save_result(url, score, reasoning, lovable_prompt)
+    screenshot_url = _upload_screenshot(url, screenshot_bytes)
+    _save_result(url, score, reasoning, lovable_prompt, screenshot_url)
+
     preview = reasoning[:80] + "..." if len(reasoning) > 80 else reasoning
     print(f"Bewertung: {score}/10 – {preview}")
-    print(f"Ergebnis gespeichert in {RESULTS_PATH}")
+    print("Ergebnis gespeichert in Supabase.")
 
     return {
         "score": score,
