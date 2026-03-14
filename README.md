@@ -33,6 +33,26 @@ python screenshot_urls.py
 
 URLs in `backend/config.json` anpassen. Screenshots landen im Ordner `backend/screenshots/`.
 
+## Website-Analyse (Gemini)
+
+Das Backend-Modul bewertet Webseiten per Screenshot mit Gemini 1.5 Flash:
+
+```bash
+pip install -r backend/requirements.txt
+playwright install chromium
+cp backend/.env.example backend/.env
+# GEMINI_API_KEY in backend/.env eintragen (https://aistudio.google.com/apikey)
+python -m backend.analyze_website https://example.com
+```
+
+Ergebnisse werden in `backend/results.json` gespeichert.
+
+**Test-Run** (Screenshot aus Config → Analyse):
+```bash
+python -m backend.test_run
+```
+Nutzt die erste URL aus `backend/config.json`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

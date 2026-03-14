@@ -23,9 +23,10 @@
 # misc
 .DS_Store
 
-# Backend: Screenshots
+# Backend: Screenshots & Ergebnisse
 /backend/screenshots/*
 !/backend/screenshots/.gitkeep
+/backend/results.json
 *.pem
 
 # debug
@@ -36,6 +37,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
