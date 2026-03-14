@@ -33,15 +33,15 @@ python screenshot_urls.py
 
 URLs in `backend/config.json` anpassen. Screenshots werden in Supabase Storage hochgeladen.
 
-## Website-Analyse (Gemini)
+## Website-Analyse (OpenAI)
 
-Das Backend-Modul bewertet Webseiten per Screenshot mit Gemini 1.5 Flash:
+Das Backend-Modul bewertet Webseiten per Screenshot mit OpenAI Vision:
 
 ```bash
 pip install -r backend/requirements.txt
 playwright install chromium
 cp backend/.env.example backend/.env
-# GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY in backend/.env eintragen
+# OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY in backend/.env eintragen
 python -m backend.analyze_website https://example.com
 ```
 
@@ -54,6 +54,25 @@ python -m backend.test_run
 python -m backend.test_run 10
 ```
 Holt Website-URLs aus Supabase `osm_data` (pro Profil) und analysiert sie. Profil via `PIGAI_PROFILE_ID` in `backend/.env` (Standard: Standard-Profil).
+
+## Lovable-Integration (automatische Verbesserung)
+
+Der „Verbessern"-Button erstellt automatisch ein Lovable-Projekt per Browser-Automation.
+
+**Einmaliges Setup (Login bei Lovable speichern):**
+```bash
+python -m backend.lovable_session_setup
+```
+Browser öffnet sich – bei Lovable einloggen – danach Enter drücken. Session wird in `backend/lovable_session.json` gespeichert.
+
+**DB-Migration ausführen** (im Supabase Dashboard → SQL Editor):
+```sql
+ALTER TABLE public.website_analysis
+    ADD COLUMN IF NOT EXISTS lovable_project_url TEXT,
+    ADD COLUMN IF NOT EXISTS lovable_screenshot_path TEXT;
+```
+
+Danach funktioniert der „Verbessern"-Button im Frontend automatisch.
 
 ## Learn More
 

@@ -159,7 +159,7 @@ export default function WebsiteScores() {
               Website-Bewertungen
             </h2>
             <p className="mt-1 text-zinc-600 dark:text-zinc-400">
-              Bewertungen von Gemini (visuelle Qualität 1–10) &middot; {results.length} Ergebnis{results.length !== 1 ? "se" : ""}
+              Bewertungen von OpenAI (visuelle Qualität 1–10) &middot; {results.length} Ergebnis{results.length !== 1 ? "se" : ""}
             </p>
           </div>
           <button

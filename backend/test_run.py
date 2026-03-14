@@ -1,6 +1,6 @@
 """
 Test-Startdatei: Analyse läuft über die aktuellen Profil-Datenbanken (osm_data).
-Holt Website-URLs aus Supabase osm_data (pro Profil) und analysiert sie mit Gemini.
+Holt Website-URLs aus Supabase osm_data (pro Profil) und analysiert sie mit OpenAI.
 """
 
 import sys

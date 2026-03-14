@@ -76,6 +76,21 @@ def table_insert(table: str, row: dict[str, Any]) -> None:
         r.raise_for_status()
 
 
+def table_update(table: str, updates: dict[str, Any], filters: dict[str, Any]) -> None:
+    """UPDATE auf eine Tabelle mit eq-Filtern."""
+    params: dict[str, str] = {}
+    for col, val in filters.items():
+        params[col] = f"eq.{val}"
+    with httpx.Client(timeout=30) as client:
+        r = client.patch(
+            _rest_url(table),
+            headers=_headers(),
+            params=params,
+            json=updates,
+        )
+        r.raise_for_status()
+
+
 def storage_upload(bucket: str, path: str, data: bytes, content_type: str = "image/png") -> str:
     """Lädt eine Datei in Storage hoch. Gibt die öffentliche URL zurück."""
     url = os.getenv("SUPABASE_URL", "").rstrip("/")
@@ -123,10 +138,27 @@ class _TableProxy:
             table_insert(self._name, r)
         return _InsertResult()
 
+    def update(self, updates: dict):
+        return _UpdateBuilder(self._name, updates)
+
 
 class _InsertResult:
     def execute(self):
         pass
+
+
+class _UpdateBuilder:
+    def __init__(self, table: str, updates: dict):
+        self._table = table
+        self._updates = updates
+        self._filters: dict[str, Any] = {}
+
+    def eq(self, column: str, value: Any):
+        self._filters[column] = value
+        return self
+
+    def execute(self):
+        table_update(self._table, self._updates, self._filters)
 
 
 class _SelectBuilder:

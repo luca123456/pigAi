@@ -1,6 +1,6 @@
 """
 Batch-Analyse: Holt bis zu 10 Website-URLs aus OSM-Daten in Supabase,
-analysiert sie mit Gemini und speichert die Ergebnisse.
+analysiert sie mit OpenAI und speichert die Ergebnisse.
 """
 
 import os
@@ -17,8 +17,8 @@ from backend.config import BACKEND_DIR
 load_dotenv(BACKEND_DIR / ".env")
 
 BATCH_SIZE = 10
-# Gemini Free Tier: 10 RPM → mind. 6s Abstand. 7s + Puffer für Retries.
-DELAY_BETWEEN_REQUESTS_SEC = 7
+# OpenAI braucht keinen so großen Abstand wie der frühere Gemini-Free-Tier-Flow.
+DELAY_BETWEEN_REQUESTS_SEC = 1
 
 # Social-Media- und andere Nicht-Website-Domains ausschließen
 _SOCIAL_DOMAINS = (
@@ -118,8 +118,11 @@ def run_batch(limit: int = BATCH_SIZE):
     profile_id = os.getenv("PIGAI_PROFILE_ID", "00000000-0000-0000-0000-000000000001")
     print(f"Profil-ID: {profile_id}")
     print(f"Supabase-URL: {os.getenv('SUPABASE_URL', '(nicht gesetzt)')}")
-    print(f"Gemini-Key: {'gesetzt' if os.getenv('GEMINI_API_KEY') else 'FEHLT!'}")
+    print(f"OpenAI-Key: {'gesetzt' if os.getenv('OPENAI_API_KEY') else 'FEHLT!'}")
     print()
+
+    if not os.getenv("OPENAI_API_KEY"):
+        raise ValueError("OPENAI_API_KEY fehlt in backend/.env")
 
     all_urls: list[str] = []
     try:

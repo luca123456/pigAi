@@ -1,5 +1,5 @@
 """
-Backend-Modul: Webseiten-Screenshots, AI-Bewertung (Gemini + OpenRouter-Fallback) und Ergebnis-Speicherung.
+Backend-Modul: Webseiten-Screenshots, AI-Bewertung (OpenAI) und Ergebnis-Speicherung.
 Speichert Ergebnisse in Supabase (website_analysis + screenshots Storage).
 """
 
@@ -17,14 +17,13 @@ from urllib.parse import urlparse
 # Projektroot für Imports (funktioniert bei python -m backend.analyze_website)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from google import genai
-from google.genai import types
 from dotenv import load_dotenv
+import httpx
 from playwright.sync_api import sync_playwright
 
 from backend.config import (
     BACKEND_DIR,
-    GEMINI_MODEL,
+    OPENAI_MODEL,
     PAGE_LOAD_WAIT,
     USER_AGENT,
     VIEWPORT,
@@ -32,27 +31,52 @@ from backend.config import (
 
 load_dotenv(BACKEND_DIR / ".env")
 
-# Gemini Free Tier: 10 RPM, 250 RPD
 MAX_AI_RETRIES = 5
 BASE_BACKOFF_SEC = 2
 
-GEMINI_PROMPT = """Du bist ein UX-Experte. Bewerte die visuelle Qualität dieser Website (Screenshot) auf einer Skala von 1-10.
+MAX_PAGE_CONTENT_CHARS = 5000
+
+_EXTRACT_CONTENT_JS = """() => {
+    const parts = [];
+    // Headings
+    document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(el => {
+        const t = el.innerText.trim();
+        if (t) parts.push('[' + el.tagName + '] ' + t);
+    });
+    // Paragraphs and list items
+    document.querySelectorAll('p,li,address,blockquote').forEach(el => {
+        const t = el.innerText.trim();
+        if (t && t.length > 10) parts.push(t);
+    });
+    // Fallback: if nothing was found, use body text
+    if (parts.length === 0) {
+        const body = document.body?.innerText ?? '';
+        return body.substring(0, 5000);
+    }
+    return parts.join('\\n');
+}"""
+
+ANALYSIS_PROMPT_TEMPLATE = """Du bist ein UX-Experte. Bewerte die visuelle Qualitaet dieser Website (Screenshot) auf einer Skala von 1-10.
+
+Original-URL der Website: {url}
 
 Bewertungskriterien:
-- 1-3: Veraltet, unübersichtlich, schlechte Typografie/Farben, wirkt unprofessionell
-- 4-6: Funktional aber verbesserungswürdig, z.B. veraltete Ästhetik oder inkonsistentes Layout
-- 7-10: Modern, übersichtlich, professionell, gute Lesbarkeit und visuelle Hierarchie
+- 1-3: Veraltet, unuebersichtlich, schlechte Typografie/Farben, wirkt unprofessionell
+- 4-6: Funktional aber verbesserungswuerdig, z.B. veraltete Aesthetik oder inkonsistentes Layout
+- 7-10: Modern, uebersichtlich, professionell, gute Lesbarkeit und visuelle Hierarchie
 
-Gib NUR ein valides JSON-Objekt zurück mit:
+Gib NUR ein valides JSON-Objekt zurueck mit:
 - "score" (integer, 1-10)
-- "reasoning" (2-3 Sätze auf Deutsch: konkrete Stärken/Schwächen)
-- "lovable_prompt" (detaillierter Prompt für lovable.dev: konkrete Verbesserungen – spezifisch und umsetzbar)
+- "reasoning" (2-3 Saetze auf Deutsch: konkrete Staerken/Schwaechen)
 
-Antworte ausschließlich mit dem JSON-Objekt, ohne Markdown oder anderen Text."""
+Antworte ausschliesslich mit dem JSON-Objekt, ohne Markdown oder anderen Text."""
 
 
-def _take_screenshot(url: str) -> bytes:
-    """Erstellt einen Screenshot der URL und gibt die PNG-Bytes zurück."""
+LOVABLE_PROMPT_TEMPLATE = "Erstelle eine moderne, verbesserte Version der Website {url}."
+
+
+def _take_screenshot_and_extract_content(url: str) -> tuple[bytes, str]:
+    """Erstellt einen Screenshot und extrahiert strukturierten Content (Headings, Absaetze, Kontaktdaten)."""
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(
@@ -62,7 +86,19 @@ def _take_screenshot(url: str) -> bytes:
         page.goto(url, wait_until="domcontentloaded")
         time.sleep(PAGE_LOAD_WAIT)
         screenshot_bytes = page.screenshot(full_page=True, type="png")
+        page_content = ""
+        try:
+            raw = page.evaluate(_EXTRACT_CONTENT_JS)
+            page_content = (raw or "").strip()[:MAX_PAGE_CONTENT_CHARS]
+        except Exception:
+            pass
         browser.close()
+    return screenshot_bytes, page_content
+
+
+def _take_screenshot(url: str) -> bytes:
+    """Erstellt einen Screenshot der URL und gibt die PNG-Bytes zurück."""
+    screenshot_bytes, _ = _take_screenshot_and_extract_content(url)
     return screenshot_bytes
 
 
@@ -77,22 +113,25 @@ def _parse_ai_json(text: str) -> dict:
     return json.loads(text)
 
 
-def _call_openrouter(screenshot_bytes: bytes) -> dict:
-    """Fallback: Sendet Screenshot an OpenRouter Free Model (Vision)."""
-    api_key = os.getenv("OPENROUTER_API_KEY")
+def _call_openai(
+    screenshot_bytes: bytes,
+    url: str = "",
+    max_retries: int = MAX_AI_RETRIES,
+) -> dict:
+    """Sendet den Screenshot an OpenAI Vision und erwartet JSON-Ausgabe."""
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise ValueError("OPENROUTER_API_KEY nicht gesetzt. Fallback nicht möglich.")
+        raise ValueError("OPENAI_API_KEY nicht gesetzt. Bitte in backend/.env definieren.")
 
-    import httpx
-
+    prompt = ANALYSIS_PROMPT_TEMPLATE.format(url=url or "(unbekannt)")
     b64 = base64.b64encode(screenshot_bytes).decode()
     payload = {
-        "model": "openrouter/free",
+        "model": OPENAI_MODEL,
         "messages": [
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": GEMINI_PROMPT},
+                    {"type": "text", "text": prompt},
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/png;base64,{b64}"},
@@ -103,57 +142,45 @@ def _call_openrouter(screenshot_bytes: bytes) -> dict:
         "temperature": 0.2,
     }
 
-    resp = httpx.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=60.0,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    text = (data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
-    return _parse_ai_json(text)
-
-
-def _call_gemini(screenshot_bytes: bytes, max_retries: int = MAX_AI_RETRIES) -> dict:
-    """Sendet den Screenshot an Gemini. Bei 429: Exponential Backoff, dann OpenRouter-Fallback."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY nicht gesetzt. Bitte in backend/.env definieren.")
-
-    client = genai.Client(api_key=api_key)
-    image_part = types.Part.from_bytes(data=screenshot_bytes, mime_type="image/png")
     last_error: Exception | None = None
-
     for attempt in range(1, max_retries + 1):
         try:
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=[GEMINI_PROMPT, image_part],
-                config=types.GenerateContentConfig(temperature=0.2),
+            resp = httpx.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=60.0,
             )
-            text = (response.text or "").strip()
-            return _parse_ai_json(text)
-        except Exception as e:
-            last_error = e
-            err_str = str(e)
-            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+            if resp.status_code in (429, 500, 502, 503, 504):
                 wait = min(BASE_BACKOFF_SEC * (2 ** (attempt - 1)), 90)
                 jitter = random.uniform(0, 0.25 * wait)
                 total = max(1, wait + jitter)
-                print(f"  [Gemini] 429 Rate-Limit. Warte {total:.0f}s (Versuch {attempt}/{max_retries}) ...")
+                print(
+                    f"  [OpenAI] HTTP {resp.status_code}. Warte {total:.0f}s "
+                    f"(Versuch {attempt}/{max_retries}) ..."
+                )
                 time.sleep(total)
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content")
+            if isinstance(content, list):
+                text = "".join(part.get("text", "") for part in content if isinstance(part, dict)).strip()
+            else:
+                text = (content or "").strip()
+            return _parse_ai_json(text)
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries:
+                wait = min(BASE_BACKOFF_SEC * (2 ** (attempt - 1)), 90)
+                time.sleep(wait)
             else:
                 raise
 
-    # Gemini fehlgeschlagen nach allen Retries → OpenRouter-Fallback
-    if os.getenv("OPENROUTER_API_KEY"):
-        print("  [Gemini] Rate-Limit überschritten. Fallback auf OpenRouter ...")
-        try:
-            return _call_openrouter(screenshot_bytes)
-        except Exception as fallback_err:
-            print(f"  [OpenRouter] Fallback fehlgeschlagen: {fallback_err}")
-    raise last_error or RuntimeError("Gemini API fehlgeschlagen")
+    raise last_error or RuntimeError("OpenAI API fehlgeschlagen")
 
 
 def _url_to_filename(url: str) -> str:
@@ -227,15 +254,24 @@ def take_screenshot(url: str) -> bytes:
     return _take_screenshot(url)
 
 
-def analyze_screenshot(screenshot_bytes: bytes, url: str) -> dict:
+def _build_lovable_prompt(url: str) -> str:
+    """Baut den Lovable-Prompt: Einfach URL + Anweisung zur modernen Version."""
+    return LOVABLE_PROMPT_TEMPLATE.format(url=url)
+
+
+def analyze_screenshot(
+    screenshot_bytes: bytes,
+    url: str,
+    page_content: str = "",
+) -> dict:
     """
-    Bewertet einen Screenshot mit Gemini und speichert das Ergebnis in Supabase.
-    Nützlich wenn der Screenshot bereits vorliegt.
+    Bewertet einen Screenshot mit OpenAI und speichert das Ergebnis in Supabase.
+    page_content: Optional – extrahierter Text der Seite für thematische Treue.
     """
-    result = _call_gemini(screenshot_bytes)
+    result = _call_openai(screenshot_bytes, url=url)
     score = int(result.get("score", 0))
     reasoning = result.get("reasoning", "")
-    lovable_prompt = result.get("lovable_prompt", "")
+    lovable_prompt = _build_lovable_prompt(url)
 
     screenshot_url = _upload_screenshot(url, screenshot_bytes)
     _save_result(url, score, reasoning, lovable_prompt, screenshot_url)
@@ -253,15 +289,15 @@ def analyze_screenshot(screenshot_bytes: bytes, url: str) -> dict:
 
 def analyze_and_score(url: str) -> dict:
     """
-    Macht einen Screenshot der URL, lässt ihn von Gemini bewerten und speichert das Ergebnis.
+    Macht einen Screenshot der URL, extrahiert den Content, lässt von OpenAI bewerten und speichert das Ergebnis.
 
     Returns:
         dict mit score, reasoning, lovable_prompt
     """
     print(f"Analysiere {url} ...")
-    screenshot_bytes = take_screenshot(url)
-    print("Screenshot erstellt. Sende an Gemini ...")
-    return analyze_screenshot(screenshot_bytes, url)
+    screenshot_bytes, page_content = _take_screenshot_and_extract_content(url)
+    print("Screenshot erstellt. Sende an OpenAI ...")
+    return analyze_screenshot(screenshot_bytes, url, page_content=page_content)
 
 
 if __name__ == "__main__":

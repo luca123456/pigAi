@@ -1,30 +1,30 @@
 """
-Test-Script: Gemini Flash API Latenz messen.
-Misst Screenshot + Gemini-Aufruf separat, um Engpässe zu identifizieren.
+Test-Script: OpenAI Vision API Latenz messen.
+Misst Screenshot + OpenAI-Aufruf separat, um Engpässe zu identifizieren.
 """
 
 import os
 import sys
 import time
 from pathlib import Path
+import base64
+
+import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
 
-from backend.config import BACKEND_DIR, GEMINI_MODEL
+from backend.config import BACKEND_DIR, OPENAI_MODEL
 
 load_dotenv(BACKEND_DIR / ".env")
 
 
-def test_gemini_only():
-    """Nur Gemini API testen – mit kleinem Testbild (1x1 Pixel)."""
-    from google import genai
-    from google.genai import types
-
-    api_key = os.getenv("GEMINI_API_KEY")
+def test_openai_only():
+    """Nur OpenAI API testen – mit kleinem Testbild (1x1 Pixel)."""
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        print("GEMINI_API_KEY nicht gesetzt.")
+        print("OPENAI_API_KEY nicht gesetzt.")
         return
 
     # Minimales PNG (1x1 transparent)
@@ -33,27 +33,46 @@ def test_gemini_only():
         b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
     )
 
-    client = genai.Client(api_key=api_key)
-    image_part = types.Part.from_bytes(data=minimal_png, mime_type="image/png")
     prompt = "Antworte mit einem JSON: {\"score\": 5, \"reasoning\": \"Test\", \"lovable_prompt\": \"Test\"}"
+    b64 = base64.b64encode(minimal_png).decode()
+    payload = {
+        "model": OPENAI_MODEL,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                ],
+            }
+        ],
+        "temperature": 0.2,
+    }
 
-    print(f"Modell: {GEMINI_MODEL}")
-    print("Sende Anfrage an Gemini API ...")
+    print(f"Modell: {OPENAI_MODEL}")
+    print("Sende Anfrage an OpenAI API ...")
 
     t0 = time.perf_counter()
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[prompt, image_part],
-        config=types.GenerateContentConfig(temperature=0.2),
+    response = httpx.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=60.0,
     )
+    response.raise_for_status()
     elapsed = time.perf_counter() - t0
+    data = response.json()
+    text = (data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
 
-    print(f"Gemini Antwortzeit: {elapsed:.2f}s")
-    print(f"Antwort: {(response.text or '')[:200]}...")
+    print(f"OpenAI Antwortzeit: {elapsed:.2f}s")
+    print(f"Antwort: {text[:200]}...")
 
 
 def test_full_pipeline(url: str = "https://www.poppele.de/"):
-    """Voller Ablauf: Screenshot + Gemini + Speichern (mit Zeiten)."""
+    """Voller Ablauf: Screenshot + OpenAI + Speichern (mit Zeiten)."""
     from backend.analyze_website import take_screenshot, analyze_screenshot
 
     print(f"URL: {url}")
@@ -63,18 +82,18 @@ def test_full_pipeline(url: str = "https://www.poppele.de/"):
     t1 = time.perf_counter()
     print(f"   Screenshot: {t1 - t0:.2f}s ({len(screenshot_bytes):,} Bytes)")
 
-    print("2. Gemini analysieren ...")
+    print("2. OpenAI analysieren ...")
     t2 = time.perf_counter()
     result = analyze_screenshot(screenshot_bytes, url)
     t3 = time.perf_counter()
-    print(f"   Gemini + Upload + Save: {t3 - t2:.2f}s")
+    print(f"   OpenAI + Upload + Save: {t3 - t2:.2f}s")
     print(f"   Score: {result['score']}/10")
     print(f"\nGesamt: {t3 - t0:.2f}s")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "gemini":
-        test_gemini_only()
+    if len(sys.argv) > 1 and sys.argv[1] == "openai":
+        test_openai_only()
     else:
         url = sys.argv[1] if len(sys.argv) > 1 else "https://www.poppele.de/"
         test_full_pipeline(url)

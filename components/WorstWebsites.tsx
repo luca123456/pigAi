@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { AlertTriangle, ExternalLink, Wand2, RefreshCw, Loader2, Copy, Check, Play } from "lucide-react";
+import { AlertTriangle, ExternalLink, Wand2, RefreshCw, Loader2, Copy, Check, Play, X } from "lucide-react";
 import { useProfile } from "@/lib/profile-context";
 
 interface WorstSite {
@@ -11,6 +11,8 @@ interface WorstSite {
   reasoning: string;
   lovable_prompt: string;
   screenshot_path: string | null;
+  lovable_project_url: string | null;
+  lovable_screenshot_path: string | null;
   created_at: string;
 }
 
@@ -30,6 +32,8 @@ export default function WorstWebsites() {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeMsg, setAnalyzeMsg] = useState<string | null>(null);
+  const [generatingId, setGeneratingId] = useState<number | null>(null);
+  const [previewSite, setPreviewSite] = useState<WorstSite | null>(null);
 
   const fetchWorst = useCallback(async () => {
     setLoading(true);
@@ -51,7 +55,7 @@ export default function WorstWebsites() {
     fetchWorst();
   }, [fetchWorst]);
 
-  const startAnalysis = async (limit = 10) => {
+  const startAnalysis = async (limit = 3) => {
     setAnalyzing(true);
     setAnalyzeMsg(null);
     try {
@@ -71,6 +75,32 @@ export default function WorstWebsites() {
     }
   };
 
+  const startLovableGeneration = async (site: WorstSite) => {
+    setGeneratingId(site.id);
+    try {
+      const res = await fetch("/api/lovable-create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ website_analysis_id: site.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lovable-Generierung fehlgeschlagen");
+
+      const updated = {
+        ...site,
+        lovable_project_url: data.lovable_project_url,
+        lovable_screenshot_path: data.lovable_screenshot_path ?? null,
+      };
+      setSites((prev) => prev.map((s) => (s.id === site.id ? updated : s)));
+      setPreviewSite(updated);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Fehler";
+      setAnalyzeMsg(`Lovable-Fehler: ${msg}`);
+    } finally {
+      setGeneratingId(null);
+    }
+  };
+
   const copyPrompt = (site: WorstSite) => {
     navigator.clipboard.writeText(site.lovable_prompt);
     setCopiedId(site.id);
@@ -83,7 +113,7 @@ export default function WorstWebsites() {
   const analyzeButton = (
     <button
       type="button"
-      onClick={() => startAnalysis(10)}
+      onClick={() => startAnalysis(3)}
       disabled={analyzing}
       className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-60"
     >
@@ -92,7 +122,7 @@ export default function WorstWebsites() {
       ) : (
         <Play className="h-4 w-4" />
       )}
-      {analyzing ? "Analyse läuft..." : "Analyse starten (10 Websites)"}
+      {analyzing ? "Analyse laeuft..." : "Analyse starten (3 Websites)"}
     </button>
   );
 
@@ -102,14 +132,14 @@ export default function WorstWebsites() {
       onClick={() => startAnalysis(10)}
       disabled={analyzing}
       className="flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 transition hover:bg-amber-100 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50 disabled:opacity-60"
-      title="Analysiere die nächsten 10 Websites aus den OSM-Daten."
+      title="Analysiere die naechsten 10 Websites aus den OSM-Daten."
     >
       {analyzing ? (
         <Loader2 className="h-4 w-4 animate-spin" />
       ) : (
         <Play className="h-4 w-4" />
       )}
-      Nächste 10 analysieren
+      Naechste 10 analysieren
     </button>
   );
 
@@ -178,92 +208,178 @@ export default function WorstWebsites() {
         )}
         {worst3TooGood && (
           <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
-            Die schlechtesten Websites sind noch relativ gut (Score ≥5). Nutze „Nächste 10 analysieren“, um weitere zu finden.
+            Die schlechtesten Websites sind noch relativ gut (Score &gt;= 5). Nutze &quot;Naechste 10 analysieren&quot;, um weitere zu finden.
           </p>
         )}
 
         <div className="mt-8 grid gap-6 sm:grid-cols-1 lg:grid-cols-3">
-          {sites.map((site, idx) => (
-            <div
-              key={site.id}
-              className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-800/50"
-            >
-              {/* Screenshot */}
-              {site.screenshot_path ? (
-                <a
-                  href={site.screenshot_path}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block"
-                >
-                  <img
-                    src={site.screenshot_path}
-                    alt={`Screenshot ${site.url}`}
-                    className="h-48 w-full object-cover object-top"
-                  />
-                </a>
-              ) : (
-                <div className="flex h-48 items-center justify-center bg-zinc-100 dark:bg-zinc-800">
-                  <span className="text-sm text-zinc-400">Kein Screenshot</span>
-                </div>
-              )}
+          {sites.map((site, idx) => {
+            const isGenerating = generatingId === site.id;
+            const hasLovable = !!site.lovable_project_url;
 
-              {/* Content */}
-              <div className="flex flex-1 flex-col p-5">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <span className="text-xs font-medium text-zinc-400">
-                      #{idx + 1}
-                    </span>
-                    <a
-                      href={site.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1 flex items-center gap-1 truncate font-medium text-zinc-900 hover:underline dark:text-zinc-50"
-                    >
-                      {site.url.replace(/^https?:\/\/(www\.)?/, "")}
-                      <ExternalLink className="h-3 w-3 shrink-0" />
-                    </a>
-                  </div>
-                  <span
-                    className={`shrink-0 rounded-full px-3 py-1 text-lg font-bold ${getScoreBadge(site.score)}`}
-                  >
-                    {site.score}/10
-                  </span>
-                </div>
-
-                <p className="mt-3 flex-1 text-sm text-zinc-600 dark:text-zinc-400">
-                  {site.reasoning}
-                </p>
-
-                {/* Actions */}
-                <div className="mt-4 flex gap-2">
+            return (
+              <div
+                key={site.id}
+                className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-800/50"
+              >
+                {site.screenshot_path ? (
                   <a
-                    href={`https://lovable.dev?prompt=${encodeURIComponent(site.lovable_prompt)}`}
+                    href={site.screenshot_path}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+                    className="block"
                   >
-                    <Wand2 className="h-4 w-4" />
-                    Verbessern
+                    <img
+                      src={site.screenshot_path}
+                      alt={`Screenshot ${site.url}`}
+                      className="h-48 w-full object-cover object-top"
+                    />
                   </a>
-                  <button
-                    type="button"
-                    onClick={() => copyPrompt(site)}
-                    className="flex items-center gap-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-700"
-                    title="Lovable-Prompt kopieren"
-                  >
-                    {copiedId === site.id ? (
-                      <Check className="h-4 w-4 text-emerald-500" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </button>
+                ) : (
+                  <div className="flex h-48 items-center justify-center bg-zinc-100 dark:bg-zinc-800">
+                    <span className="text-sm text-zinc-400">Kein Screenshot</span>
+                  </div>
+                )}
+
+                <div className="flex flex-1 flex-col p-5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs font-medium text-zinc-400">
+                        #{idx + 1}
+                      </span>
+                      <a
+                        href={site.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 flex items-center gap-1 truncate font-medium text-zinc-900 hover:underline dark:text-zinc-50"
+                      >
+                        {site.url.replace(/^https?:\/\/(www\.)?/, "")}
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                      </a>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-3 py-1 text-lg font-bold ${getScoreBadge(site.score)}`}
+                    >
+                      {site.score}/10
+                    </span>
+                  </div>
+
+                  <p className="mt-3 flex-1 text-sm text-zinc-600 dark:text-zinc-400">
+                    {site.reasoning}
+                  </p>
+
+                  {hasLovable && (
+                    <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3 dark:border-violet-700 dark:bg-violet-900/20">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-violet-700 dark:text-violet-300">
+                          Lovable-Entwurf
+                        </p>
+                        {(site.lovable_screenshot_path || site.lovable_project_url) && (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewSite(site)}
+                            className="rounded-md bg-violet-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-violet-700"
+                          >
+                            Vorschau
+                          </button>
+                        )}
+                      </div>
+                      <a
+                        href={site.lovable_project_url!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 flex items-center gap-1 text-sm font-medium text-violet-700 hover:underline dark:text-violet-300"
+                      >
+                        In Lovable oeffnen
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startLovableGeneration(site)}
+                      disabled={isGenerating || generatingId !== null}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:opacity-60"
+                    >
+                      {isGenerating ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Wand2 className="h-4 w-4" />
+                      )}
+                      {isGenerating
+                        ? "Wird generiert..."
+                        : hasLovable
+                          ? "Erneut generieren"
+                          : "Verbessern"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => copyPrompt(site)}
+                      className="flex items-center gap-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                      title="Lovable-Prompt kopieren"
+                    >
+                      {copiedId === site.id ? (
+                        <Check className="h-4 w-4 text-emerald-500" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
+
+        {/* Lovable Preview Overlay */}
+        {previewSite && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="relative mx-4 flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-900">
+              <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-700">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                    Lovable-Vorschau: {previewSite.url.replace(/^https?:\/\/(www\.)?/, "")}
+                  </h3>
+                  {previewSite.lovable_project_url && (
+                    <a
+                      href={previewSite.lovable_project_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 flex items-center gap-1 text-sm text-violet-600 hover:underline dark:text-violet-400"
+                    >
+                      In Lovable oeffnen
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPreviewSite(null)}
+                  className="ml-4 rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-800">
+                {previewSite.lovable_screenshot_path ? (
+                  <img
+                    src={previewSite.lovable_screenshot_path}
+                    alt="Lovable-Vorschau"
+                    className="mx-auto max-w-full"
+                  />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+                    <p className="max-w-2xl text-sm text-zinc-700 dark:text-zinc-300">
+                      Kein Screenshot verfuegbar.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

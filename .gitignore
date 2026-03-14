@@ -29,6 +29,7 @@ __pycache__/
 /backend/screenshots/*
 !/backend/screenshots/.gitkeep
 /backend/results.json
+/backend/lovable_session.json
 *.pem
 
 # debug

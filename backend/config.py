@@ -7,8 +7,8 @@ BACKEND_DIR = Path(__file__).parent
 RESULTS_PATH = BACKEND_DIR / "results.json"  # deprecated, wird nicht mehr verwendet
 SCREENSHOTS_DIR = BACKEND_DIR / "screenshots"  # deprecated, Supabase Storage wird verwendet
 
-# Gemini Vision-Modell
-GEMINI_MODEL = "gemini-2.5-flash"
+# OpenAI Vision-Modell
+OPENAI_MODEL = "gpt-4.1-mini"
 
 # Playwright
 VIEWPORT = {"width": 1280, "height": 800}
