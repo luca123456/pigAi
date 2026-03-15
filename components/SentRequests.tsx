@@ -42,6 +42,7 @@ export default function SentRequests({ requests }: SentRequestsProps) {
             url: selectedRequest.url,
             lovable_project_url: selectedRequest.lovable_project_url ?? null,
             lovable_screenshot_path: selectedRequest.lovable_screenshot_path ?? null,
+            screenshot_path: selectedRequest.screenshot_path ?? null,
           }}
           onClose={() => setSelectedRequest(null)}
         />

@@ -51,7 +51,7 @@ export async function GET(req: Request) {
 
     let { data, error } = await supabase
       .from("website_analysis")
-      .select("id, url, score, lovable_project_url, lovable_screenshot_path, created_at, profile_id")
+      .select("id, url, score, lovable_project_url, lovable_screenshot_path, screenshot_path, created_at, profile_id")
       .eq("profile_id", profileId)
       .not("lovable_project_url", "is", null)
       .is("outreach_sent_at", null)
@@ -68,7 +68,7 @@ export async function GET(req: Request) {
     if ((data ?? []).length === 0) {
       const { data: fallbackData } = await supabase
         .from("website_analysis")
-        .select("id, url, score, lovable_project_url, lovable_screenshot_path, created_at, profile_id")
+        .select("id, url, score, lovable_project_url, lovable_screenshot_path, screenshot_path, created_at, profile_id")
         .not("lovable_project_url", "is", null)
         .is("outreach_sent_at", null)
         .order("created_at", { ascending: false })
@@ -101,6 +101,7 @@ export async function GET(req: Request) {
         url: row.url,
         lovable_project_url: row.lovable_project_url ?? null,
         lovable_screenshot_path: row.lovable_screenshot_path ?? null,
+        screenshot_path: row.screenshot_path ?? null,
       };
     });
 

@@ -1,15 +1,13 @@
-import { Briefcase, Mail, CheckCircle } from "lucide-react";
+import { Briefcase, Mail } from "lucide-react";
 
 interface StatsCardsProps {
   activeProjects: number;
   requestsSent: number;
-  responsesReceived: number;
 }
 
 export default function StatsCards({
   activeProjects,
   requestsSent,
-  responsesReceived,
 }: StatsCardsProps) {
   const cards = [
     {
@@ -22,17 +20,12 @@ export default function StatsCards({
       value: requestsSent,
       icon: Mail,
     },
-    {
-      label: "Antworten erhalten",
-      value: responsesReceived,
-      icon: CheckCircle,
-    },
   ];
 
   return (
     <section className="px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {cards.map(({ label, value, icon: Icon }) => (
             <div
               key={label}

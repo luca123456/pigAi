@@ -60,7 +60,6 @@ export default function Home() {
         <StatsCards
           activeProjects={stats.activeProjects}
           requestsSent={stats.requestsSent}
-          responsesReceived={stats.responsesReceived}
         />
         <CurrentProjects projects={loading ? [] : projects} />
         <SentRequests requests={loading ? [] : sentRequests} />

@@ -18,6 +18,7 @@ export interface Project {
   url?: string;
   lovable_project_url?: string | null;
   lovable_screenshot_path?: string | null;
+  screenshot_path?: string | null;
 }
 
 export interface SentRequest {
@@ -30,6 +31,7 @@ export interface SentRequest {
   url?: string;
   lovable_project_url?: string | null;
   lovable_screenshot_path?: string | null;
+  screenshot_path?: string | null;
 }
 
 export interface AnalysisResult {

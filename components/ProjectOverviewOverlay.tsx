@@ -9,6 +9,7 @@ interface ProjectOverviewProject {
   url: string;
   lovable_project_url?: string | null;
   lovable_screenshot_path?: string | null;
+  screenshot_path?: string | null;
 }
 
 interface ProjectOverviewOverlayProps {
@@ -35,6 +36,24 @@ export default function ProjectOverviewOverlay({ project, onClose }: ProjectOver
               <X className="h-5 w-5" />
             </button>
           </div>
+          {project.screenshot_path ? (
+            <a
+              href={project.screenshot_path}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 block overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700"
+            >
+              <img
+                src={project.screenshot_path}
+                alt={`Screenshot ${project.url}`}
+                className="h-48 w-full object-cover object-top"
+              />
+            </a>
+          ) : (
+            <div className="mt-4 flex h-32 items-center justify-center rounded-lg bg-zinc-100 dark:bg-zinc-800">
+              <span className="text-sm text-zinc-400">Kein Screenshot verfuegbar</span>
+            </div>
+          )}
           <div className="mt-6 flex flex-col gap-3">
             <button
               type="button"

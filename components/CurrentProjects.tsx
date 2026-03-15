@@ -42,6 +42,7 @@ export default function CurrentProjects({ projects }: CurrentProjectsProps) {
             url: previewProject.url,
             lovable_project_url: previewProject.lovable_project_url ?? null,
             lovable_screenshot_path: previewProject.lovable_screenshot_path ?? null,
+            screenshot_path: previewProject.screenshot_path ?? null,
           }}
           onClose={() => setPreviewProject(null)}
         />
