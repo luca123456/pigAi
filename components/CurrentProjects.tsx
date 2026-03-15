@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Project } from "@/lib/types";
 import ProjectCard from "./ProjectCard";
-import LovablePreviewOverlay from "./LovablePreviewOverlay";
+import ProjectOverviewOverlay from "./ProjectOverviewOverlay";
 
 interface CurrentProjectsProps {
   projects: Project[];
@@ -36,10 +36,13 @@ export default function CurrentProjects({ projects }: CurrentProjectsProps) {
         </div>
       </div>
       {previewProject?.url && (
-        <LovablePreviewOverlay
-          url={previewProject.url}
-          lovable_project_url={previewProject.lovable_project_url ?? null}
-          lovable_screenshot_path={previewProject.lovable_screenshot_path ?? null}
+        <ProjectOverviewOverlay
+          project={{
+            name: previewProject.name,
+            url: previewProject.url,
+            lovable_project_url: previewProject.lovable_project_url ?? null,
+            lovable_screenshot_path: previewProject.lovable_screenshot_path ?? null,
+          }}
           onClose={() => setPreviewProject(null)}
         />
       )}

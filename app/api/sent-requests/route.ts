@@ -51,7 +51,7 @@ export async function GET(req: Request) {
 
     let { data, error } = await supabase
       .from("website_analysis")
-      .select("id, url, outreach_sent_at, profile_id")
+      .select("id, url, outreach_sent_at, profile_id, lovable_project_url, lovable_screenshot_path")
       .eq("profile_id", profileId)
       .not("outreach_sent_at", "is", null)
       .order("outreach_sent_at", { ascending: false })
@@ -67,7 +67,7 @@ export async function GET(req: Request) {
     if ((data ?? []).length === 0) {
       const { data: fallbackData } = await supabase
         .from("website_analysis")
-        .select("id, url, outreach_sent_at, profile_id")
+        .select("id, url, outreach_sent_at, profile_id, lovable_project_url, lovable_screenshot_path")
         .not("outreach_sent_at", "is", null)
         .order("outreach_sent_at", { ascending: false })
         .limit(100);
@@ -98,6 +98,9 @@ export async function GET(req: Request) {
         category: osm?.category ?? "",
         sentAt: sentAt ? new Date(sentAt).toISOString().slice(0, 10) : "",
         status: "E-Mail verschickt" as const,
+        url: row.url,
+        lovable_project_url: row.lovable_project_url ?? null,
+        lovable_screenshot_path: row.lovable_screenshot_path ?? null,
       };
     });
 

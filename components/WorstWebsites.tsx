@@ -156,24 +156,7 @@ export default function WorstWebsites() {
       ) : (
         <Play className="h-4 w-4" />
       )}
-      {analyzing ? "Analyse laeuft..." : "Analyse starten (3 Websites)"}
-    </button>
-  );
-
-  const analyzeNext10Button = sites.length > 0 && (
-    <button
-      type="button"
-      onClick={() => startAnalysis(10)}
-      disabled={analyzing}
-      className="flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 transition hover:bg-amber-100 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50 disabled:opacity-60"
-      title="Analysiere die naechsten 10 Websites aus den OSM-Daten."
-    >
-      {analyzing ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : (
-        <Play className="h-4 w-4" />
-      )}
-      Naechste 10 analysieren
+      {analyzing ? "Analyse laeuft..." : "Analyse starten"}
     </button>
   );
 
@@ -226,7 +209,6 @@ export default function WorstWebsites() {
           </div>
           <div className="flex flex-wrap gap-2">
             {analyzeButton}
-            {analyzeNext10Button}
             <button
               type="button"
               onClick={fetchWorst}
@@ -242,7 +224,7 @@ export default function WorstWebsites() {
         )}
         {worst3TooGood && (
           <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
-            Die schlechtesten Websites sind noch relativ gut (Score &gt;= 5). Nutze &quot;Naechste 10 analysieren&quot;, um weitere zu finden.
+            Die schlechtesten Websites sind noch relativ gut (Score &gt;= 5).
           </p>
         )}
 

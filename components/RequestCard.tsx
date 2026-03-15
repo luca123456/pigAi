@@ -2,6 +2,7 @@ import type { SentRequest } from "@/lib/types";
 
 interface RequestCardProps {
   request: SentRequest;
+  onClick?: () => void;
 }
 
 function formatDate(dateStr: string) {
@@ -17,9 +18,15 @@ function formatDate(dateStr: string) {
   }
 }
 
-export default function RequestCard({ request }: RequestCardProps) {
+export default function RequestCard({ request, onClick }: RequestCardProps) {
   return (
-    <article className="rounded-xl border border-zinc-200 bg-white p-5 shadow-md transition hover:shadow-lg dark:border-zinc-700 dark:bg-zinc-800/50">
+    <article
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (e) => e.key === "Enter" && onClick() : undefined}
+      className={`rounded-xl border border-zinc-200 bg-white p-5 shadow-md transition hover:shadow-lg dark:border-zinc-700 dark:bg-zinc-800/50 ${onClick ? "cursor-pointer" : ""}`}
+    >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">

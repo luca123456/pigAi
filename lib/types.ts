@@ -27,6 +27,9 @@ export interface SentRequest {
   category: string;
   sentAt: string;
   status: RequestStatus;
+  url?: string;
+  lovable_project_url?: string | null;
+  lovable_screenshot_path?: string | null;
 }
 
 export interface AnalysisResult {
