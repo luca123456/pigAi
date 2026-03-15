@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { AlertTriangle, ExternalLink, Wand2, RefreshCw, Loader2, Copy, Check, Play, X } from "lucide-react";
+import { AlertTriangle, ExternalLink, Wand2, RefreshCw, Loader2, Copy, Check, Play, X, Send } from "lucide-react";
 import { useProfile } from "@/lib/profile-context";
 
 interface WorstSite {
@@ -33,6 +33,8 @@ export default function WorstWebsites() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeMsg, setAnalyzeMsg] = useState<string | null>(null);
   const [generatingId, setGeneratingId] = useState<number | null>(null);
+  const [sendingId, setSendingId] = useState<number | null>(null);
+  const [outreachSentIds, setOutreachSentIds] = useState<Set<number>>(new Set());
   const [previewSite, setPreviewSite] = useState<WorstSite | null>(null);
 
   const fetchWorst = useCallback(async () => {
@@ -105,6 +107,28 @@ export default function WorstWebsites() {
     navigator.clipboard.writeText(site.lovable_prompt);
     setCopiedId(site.id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const sendToWebhook = async (site: WorstSite) => {
+    setSendingId(site.id);
+    try {
+      const res = await fetch("https://hook.eu1.make.com/2j18dzglqke5x65nv9xmpwtpbvhcvujs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          original_url: site.url,
+          website_url: site.url,
+          screenshot_url: site.lovable_screenshot_path ?? site.screenshot_path,
+        }),
+      });
+      if (!res.ok) throw new Error(`Webhook ${res.status}`);
+      setOutreachSentIds((prev) => new Set(prev).add(site.id));
+      setAnalyzeMsg(`Outreach gestartet für ${site.url.replace(/^https?:\/\/(www\.)?/, "")}`);
+    } catch (err) {
+      setAnalyzeMsg(err instanceof Error ? err.message : "Webhook-Fehler");
+    } finally {
+      setSendingId(null);
+    }
   };
 
   const worstScore = sites.length > 0 ? Math.min(...sites.map((s) => s.score)) : 0;
@@ -293,6 +317,23 @@ export default function WorstWebsites() {
                         In Lovable oeffnen
                         <ExternalLink className="h-3 w-3" />
                       </a>
+                      <button
+                        type="button"
+                        onClick={() => sendToWebhook(site)}
+                        disabled={sendingId !== null || outreachSentIds.has(site.id)}
+                        className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {sendingId === site.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                        {sendingId === site.id
+                          ? "Wird gesendet..."
+                          : outreachSentIds.has(site.id)
+                            ? "Outreach gesendet"
+                            : "Outreach starten"}
+                      </button>
                     </div>
                   )}
 
