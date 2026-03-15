@@ -286,7 +286,8 @@ export async function POST(req: Request) {
 
     const rows = overpassData.elements
       .map(elementToRow)
-      .filter((r): r is NonNullable<typeof r> => r !== null);
+      .filter((r): r is NonNullable<typeof r> => r !== null)
+      .slice(0, 50);
 
     if (rows.length === 0) {
       return NextResponse.json({

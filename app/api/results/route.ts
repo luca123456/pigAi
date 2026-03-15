@@ -36,6 +36,7 @@ export async function GET(req: Request) {
       .from("website_analysis")
       .select("*")
       .eq("profile_id", profileId)
+      .order("score", { ascending: true })
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -51,6 +52,7 @@ export async function GET(req: Request) {
       const { data: fallbackData } = await supabase
         .from("website_analysis")
         .select("*")
+        .order("score", { ascending: true })
         .order("created_at", { ascending: false })
         .limit(100);
       if (fallbackData && fallbackData.length > 0) {
@@ -60,7 +62,7 @@ export async function GET(req: Request) {
     }
 
     // Map to expected format (timestamp für Kompatibilität mit Frontend)
-    const results: AnalysisResult[] = (data ?? []).map((row) => ({
+    const mapped = (data ?? []).map((row) => ({
       id: row.id,
       url: row.url,
       score: row.score,
@@ -71,7 +73,15 @@ export async function GET(req: Request) {
       timestamp: row.created_at,
     }));
 
-    return NextResponse.json(results);
+    // Deduplizieren: nur die neueste Analyse pro URL behalten
+    const seen = new Set<string>();
+    const unique = mapped.filter((r) => {
+      if (seen.has(r.url)) return false;
+      seen.add(r.url);
+      return true;
+    });
+
+    return NextResponse.json(unique);
   } catch (error) {
     console.error("Fehler beim Laden der Ergebnisse:", error);
     return NextResponse.json(

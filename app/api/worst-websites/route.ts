@@ -29,7 +29,7 @@ export async function GET(req: Request) {
       .select("*")
       .eq("profile_id", profileId)
       .order("score", { ascending: true })
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: true })
       .limit(50);
 
     if (error) {
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
         .from("website_analysis")
         .select("*")
         .order("score", { ascending: true })
-        .order("created_at", { ascending: false })
+        .order("created_at", { ascending: true })
         .limit(50);
       if (fallbackData && fallbackData.length > 0) {
         const firstProfileId = fallbackData[0].profile_id as string;
@@ -61,9 +61,9 @@ export async function GET(req: Request) {
       return true;
     });
 
-    const worst3 = unique.slice(0, 3);
+    const worst50 = unique.slice(0, 50);
 
-    return NextResponse.json(worst3);
+    return NextResponse.json(worst50);
   } catch (error) {
     console.error("worst-websites Fehler:", error);
     return NextResponse.json(

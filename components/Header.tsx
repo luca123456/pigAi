@@ -15,18 +15,6 @@ export default function Header() {
         </Link>
         <nav className="flex items-center gap-4 text-sm font-medium text-zinc-600 dark:text-zinc-400">
           <ProfileSelector />
-          <Link
-            href="#search"
-            className="transition-colors hover:text-zinc-900 dark:hover:text-zinc-50"
-          >
-            Suchen
-          </Link>
-          <Link
-            href="#"
-            className="transition-colors hover:text-zinc-900 dark:hover:text-zinc-50"
-          >
-            Login
-          </Link>
         </nav>
       </div>
     </header>

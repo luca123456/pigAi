@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
-
 const execAsync = promisify(exec);
 
 /**
@@ -74,8 +73,11 @@ export async function POST(req: Request) {
       analyzed,
       output: output.slice(-2000),
     });
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
+  } catch (error: unknown) {
+    const execError = error as { message?: string; stdout?: string; stderr?: string };
+    const output = [execError.stdout, execError.stderr].filter(Boolean).join("\n").trim();
+    const fehlerMatch = output.match(/Fehler:\s*.+/);
+    const msg = fehlerMatch ? fehlerMatch[0] : (execError.message ?? String(error));
     console.error("Analyse-Fehler:", msg);
     return NextResponse.json(
       { success: false, error: msg.slice(0, 500) },

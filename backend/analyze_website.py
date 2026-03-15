@@ -56,34 +56,78 @@ _EXTRACT_CONTENT_JS = """() => {
     return parts.join('\\n');
 }"""
 
-ANALYSIS_PROMPT_TEMPLATE = """Du bist ein UX-Experte. Bewerte die visuelle Qualitaet dieser Website (Screenshot) auf einer Skala von 1-10.
+ANALYSIS_PROMPT_TEMPLATE = """Bewerte die Website anhand des Landingpage-Screenshots und der URL {url} als UX-, SEO- und GEO-Auditor.
 
-Original-URL der Website: {url}
+Nutze nur sichtbare Elemente und vorsichtige Rückschlüsse. Erfinde keine technischen Fakten.
 
-Bewertungskriterien:
-- 1-3: Veraltet, unuebersichtlich, schlechte Typografie/Farben, wirkt unprofessionell
-- 4-6: Funktional aber verbesserungswuerdig, z.B. veraltete Aesthetik oder inkonsistentes Layout
-- 7-10: Modern, uebersichtlich, professionell, gute Lesbarkeit und visuelle Hierarchie
+Vergib 1–10 für:
+- visualQuality: Design, Layout, Typografie, Farben, Hierarchie
+- uxClarity: Übersicht, Lesbarkeit, Struktur, CTA, Vertrauen
+- seoSignals: Headline, Content-Hierarchie, Suchintention, Trust, thematische/lokale Klarheit
+- geoSignals: klare Aussagen, zitierbare Inhalte, eindeutige Leistung, gut extrahierbare Infos
 
-Gib NUR ein valides JSON-Objekt zurueck mit:
-- "score" (integer, 1-10)
-- "reasoning" (2-3 Saetze auf Deutsch: konkrete Staerken/Schwaechen)
+Berechne overallScore mit:
+visualQuality 35%, uxClarity 30%, seoSignals 20%, geoSignals 15%.
 
-Antworte ausschliesslich mit dem JSON-Objekt, ohne Markdown oder anderen Text."""
+Verdict:
+1–3 outdated, 4–6 average, 7–10 strong.
+
+Gib nur dieses JSON zurück:
+
+{
+  "overallScore": 1,
+  "scores": {
+    "visualQuality": 1,
+    "uxClarity": 1,
+    "seoSignals": 1,
+    "geoSignals": 1
+  },
+  "verdict": "outdated | average | strong",
+  "reasoning": "2-4 Sätze auf Deutsch.",
+  "strengths": ["...", "...", "..."],
+  "weaknesses": ["...", "...", "..."],
+  "quickWins": ["...", "...", "..."]
+}"""
 
 
-LOVABLE_PROMPT_TEMPLATE = "Erstelle eine moderne, verbesserte Version der Website {url}."
+LOVABLE_PROMPT_TEMPLATE = "Redesign die Website {url} in modern, klar und professionell. Behalte den inhaltlichen Zweck bei, verbessere aber Design, Typografie, visuelle Hierarchie, Abstände, CTA-Platzierung und Nutzerführung deutlich. Die Seite soll hochwertig, vertrauenswürdig, responsive und conversionstark wirken."
+
+
+def _normalize_url(url: str) -> str:
+    """Stellt sicher, dass die URL ein Protokoll hat (https://)."""
+    url = url.strip()
+    if not url:
+        raise ValueError("URL darf nicht leer sein")
+    if not url.startswith(("http://", "https://")):
+        return f"https://{url}"
+    return url
 
 
 def _take_screenshot_and_extract_content(url: str) -> tuple[bytes, str]:
     """Erstellt einen Screenshot und extrahiert strukturierten Content (Headings, Absaetze, Kontaktdaten)."""
+    url = _normalize_url(url)
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page(
+        context = browser.new_context(
             viewport=VIEWPORT,
             user_agent=USER_AGENT,
+            ignore_https_errors=True,
         )
-        page.goto(url, wait_until="domcontentloaded")
+        page = context.new_page()
+        try:
+            page.goto(url, wait_until="domcontentloaded")
+        except Exception as e:
+            err_msg = str(e).lower()
+            if ("ssl" in err_msg or "err_ssl" in err_msg or "certificate" in err_msg) and url.startswith("https://"):
+                http_url = "http://" + url[8:]
+                print(f"  HTTPS fehlgeschlagen, versuche HTTP: {http_url}")
+                try:
+                    page.goto(http_url, wait_until="domcontentloaded")
+                    url = http_url
+                except Exception:
+                    raise RuntimeError("Fehler: Seite unsicher") from e
+            else:
+                raise
         time.sleep(PAGE_LOAD_WAIT)
         screenshot_bytes = page.screenshot(full_page=True, type="png")
         page_content = ""
@@ -123,7 +167,7 @@ def _call_openai(
     if not api_key:
         raise ValueError("OPENAI_API_KEY nicht gesetzt. Bitte in backend/.env definieren.")
 
-    prompt = ANALYSIS_PROMPT_TEMPLATE.format(url=url or "(unbekannt)")
+    prompt = ANALYSIS_PROMPT_TEMPLATE.replace("{url}", url or "(unbekannt)")
     b64 = base64.b64encode(screenshot_bytes).decode()
     payload = {
         "model": OPENAI_MODEL,
@@ -171,7 +215,8 @@ def _call_openai(
                 text = "".join(part.get("text", "") for part in content if isinstance(part, dict)).strip()
             else:
                 text = (content or "").strip()
-            return _parse_ai_json(text)
+            parsed = _parse_ai_json(text)
+            return parsed
         except Exception as e:
             last_error = e
             if attempt < max_retries:
@@ -256,7 +301,7 @@ def take_screenshot(url: str) -> bytes:
 
 def _build_lovable_prompt(url: str) -> str:
     """Baut den Lovable-Prompt: Einfach URL + Anweisung zur modernen Version."""
-    return LOVABLE_PROMPT_TEMPLATE.format(url=url)
+    return LOVABLE_PROMPT_TEMPLATE.replace("{url}", url)
 
 
 def analyze_screenshot(
@@ -269,7 +314,8 @@ def analyze_screenshot(
     page_content: Optional – extrahierter Text der Seite für thematische Treue.
     """
     result = _call_openai(screenshot_bytes, url=url)
-    score = int(result.get("score", 0))
+    raw_score = result.get("overallScore") or result.get("score") or 0
+    score = max(1, min(10, int(float(raw_score))))
     reasoning = result.get("reasoning", "")
     lovable_prompt = _build_lovable_prompt(url)
 
@@ -306,4 +352,8 @@ if __name__ == "__main__":
         sys.exit(1)
 
     url = sys.argv[1]
-    analyze_and_score(url)
+    try:
+        analyze_and_score(url)
+    except Exception as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)

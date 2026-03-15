@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { AlertTriangle, ExternalLink, Wand2, RefreshCw, Loader2, Copy, Check, Play, Send } from "lucide-react";
+import { AlertTriangle, ExternalLink, Wand2, RefreshCw, Loader2, Copy, Check, Send, X } from "lucide-react";
 import { useProfile } from "@/lib/profile-context";
 import LovablePreviewOverlay from "./LovablePreviewOverlay";
 
@@ -18,12 +18,10 @@ interface WorstSite {
   outreach_sent_at: string | null;
 }
 
-function getScoreBadge(score: number) {
-  if (score <= 3)
-    return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
-  if (score <= 5)
-    return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
-  return "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400";
+function getScoreColor(score: number) {
+  if (score >= 7) return "text-emerald-600 dark:text-emerald-400";
+  if (score >= 5) return "text-amber-600 dark:text-amber-400";
+  return "text-red-600 dark:text-red-400";
 }
 
 export default function WorstWebsites() {
@@ -32,11 +30,11 @@ export default function WorstWebsites() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
   const [analyzeMsg, setAnalyzeMsg] = useState<string | null>(null);
   const [generatingId, setGeneratingId] = useState<number | null>(null);
   const [sendingId, setSendingId] = useState<number | null>(null);
   const [previewSite, setPreviewSite] = useState<WorstSite | null>(null);
+  const [dismissedIds, setDismissedIds] = useState<Set<number>>(() => new Set());
 
   const fetchWorst = useCallback(async () => {
     setLoading(true);
@@ -55,28 +53,18 @@ export default function WorstWebsites() {
   }, [selectedProfileId]);
 
   useEffect(() => {
+    setDismissedIds(new Set());
+  }, [selectedProfileId]);
+
+  useEffect(() => {
     fetchWorst();
   }, [fetchWorst]);
 
-  const startAnalysis = async (limit = 3) => {
-    setAnalyzing(true);
-    setAnalyzeMsg(null);
-    try {
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ limit, profileId: selectedProfileId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Analyse fehlgeschlagen");
-      setAnalyzeMsg(`${data.analyzed} Website(s) analysiert`);
-      fetchWorst();
-    } catch (err) {
-      setAnalyzeMsg(err instanceof Error ? err.message : "Fehler bei der Analyse");
-    } finally {
-      setAnalyzing(false);
-    }
-  };
+  useEffect(() => {
+    const handler = () => fetchWorst();
+    window.addEventListener("analysis-completed", handler);
+    return () => window.removeEventListener("analysis-completed", handler);
+  }, [fetchWorst]);
 
   const startLovableGeneration = async (site: WorstSite) => {
     setGeneratingId(site.id);
@@ -141,24 +129,25 @@ export default function WorstWebsites() {
     }
   };
 
-  const worstScore = sites.length > 0 ? Math.min(...sites.map((s) => s.score)) : 0;
-  const worst3TooGood = sites.length >= 3 && worstScore >= 5;
+  const displayedSites = sites
+    .filter((s) => !dismissedIds.has(s.id))
+    .sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score;
+      return (a.created_at ?? "").localeCompare(b.created_at ?? "");
+    })
+    .slice(0, 3);
+  const worstScore = displayedSites.length > 0 ? Math.min(...displayedSites.map((s) => s.score)) : 0;
+  const worst3TooGood = displayedSites.length >= 3 && worstScore >= 5;
 
-  const analyzeButton = (
-    <button
-      type="button"
-      onClick={() => startAnalysis(3)}
-      disabled={analyzing}
-      className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-60"
-    >
-      {analyzing ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : (
-        <Play className="h-4 w-4" />
-      )}
-      {analyzing ? "Analyse laeuft..." : "Analyse starten"}
-    </button>
-  );
+  useEffect(() => {
+    const urls = displayedSites.map((s) => s.url);
+    const dismissedUrls = sites.filter((s) => dismissedIds.has(s.id)).map((s) => s.url);
+    window.dispatchEvent(new CustomEvent("worst3-urls", { detail: { urls, dismissedUrls } }));
+  }, [sites, dismissedIds]);
+
+  const dismissSite = (id: number) => {
+    setDismissedIds((prev) => new Set(prev).add(id));
+  };
 
   if (loading) {
     return (
@@ -183,9 +172,8 @@ export default function WorstWebsites() {
             Schlechteste Websites
           </h2>
           <p className="mt-4 text-zinc-600 dark:text-zinc-400">
-            {error || "Noch keine analysierten Websites. Starte die Batch-Analyse:"}
+            {error || "Noch keine analysierten Websites. Fuehre oben eine Suche aus – die Analyse (bis zu 10) startet automatisch."}
           </p>
-          <div className="mt-4">{analyzeButton}</div>
           {analyzeMsg && (
             <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">{analyzeMsg}</p>
           )}
@@ -208,7 +196,6 @@ export default function WorstWebsites() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {analyzeButton}
             <button
               type="button"
               onClick={fetchWorst}
@@ -228,16 +215,39 @@ export default function WorstWebsites() {
           </p>
         )}
 
+        {displayedSites.length === 0 ? (
+          <div className="mt-8 rounded-xl border border-zinc-200 bg-zinc-50 p-8 text-center dark:border-zinc-700 dark:bg-zinc-800/50">
+            <p className="text-zinc-600 dark:text-zinc-400">
+              Alle angezeigten Websites ausgeblendet.
+            </p>
+            <button
+              type="button"
+              onClick={fetchWorst}
+              className="mt-4 flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Aktualisieren
+            </button>
+          </div>
+        ) : (
         <div className="mt-8 grid gap-6 sm:grid-cols-1 lg:grid-cols-3">
-          {sites.map((site, idx) => {
+          {displayedSites.map((site, idx) => {
             const isGenerating = generatingId === site.id;
             const hasLovable = !!site.lovable_project_url;
 
             return (
               <div
                 key={site.id}
-                className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-800/50"
+                className="relative flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-800/50"
               >
+                <button
+                  type="button"
+                  onClick={() => dismissSite(site.id)}
+                  title="Zu gut – ausblenden"
+                  className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200/90 text-zinc-600 transition hover:bg-zinc-300 hover:text-zinc-900 dark:bg-zinc-700/90 dark:text-zinc-300 dark:hover:bg-zinc-600 dark:hover:text-zinc-50"
+                >
+                  <X className="h-4 w-4" />
+                </button>
                 {site.screenshot_path ? (
                   <a
                     href={site.screenshot_path}
@@ -274,7 +284,7 @@ export default function WorstWebsites() {
                       </a>
                     </div>
                     <span
-                      className={`shrink-0 rounded-full px-3 py-1 text-lg font-bold ${getScoreBadge(site.score)}`}
+                      className={`shrink-0 text-2xl font-bold ${getScoreColor(site.score)}`}
                     >
                       {site.score}/10
                     </span>
@@ -365,6 +375,7 @@ export default function WorstWebsites() {
             );
           })}
         </div>
+        )}
 
         {previewSite && (
           <LovablePreviewOverlay

@@ -37,6 +37,20 @@ export default function Hero() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Fehler");
       setResult(data);
+
+      if (data.success && data.inserted > 0) {
+        window.dispatchEvent(new CustomEvent("analysis-started"));
+        fetch("/api/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ limit: 10, profileId: selectedProfileId }),
+        })
+          .then((r) => r.json())
+          .catch(() => {})
+          .finally(() => {
+            window.dispatchEvent(new CustomEvent("analysis-completed"));
+          });
+      }
     } catch (err) {
       setResult({
         success: false,
@@ -141,7 +155,7 @@ export default function Hero() {
             {result.success ? (
               <p>
                 {result.inserted !== undefined
-                  ? `${result.inserted} Betriebe mit Website gefunden und gespeichert.`
+                  ? `${result.inserted} Betriebe mit Website gefunden und gespeichert. Analyse (bis zu 10) laeuft im Hintergrund.`
                   : "Abfrage erfolgreich."}
               </p>
             ) : (

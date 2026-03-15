@@ -11,6 +11,7 @@ import CurrentProjects from "@/components/CurrentProjects";
 import SentRequests from "@/components/SentRequests";
 import WebsiteScores from "@/components/WebsiteScores";
 import WorstWebsites from "@/components/WorstWebsites";
+import OwnWebsiteSection from "@/components/OwnWebsiteSection";
 import Footer from "@/components/Footer";
 
 export default function Home() {
@@ -57,6 +58,7 @@ export default function Home() {
       <Header />
       <main>
         <Hero />
+        <OwnWebsiteSection />
         <StatsCards
           activeProjects={stats.activeProjects}
           requestsSent={stats.requestsSent}
