@@ -18,10 +18,11 @@ Ablauf:
 import io
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urljoin
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -38,6 +39,9 @@ MAX_WAIT_SECONDS = 420
 POLL_INTERVAL = 5
 PREVIEW_POLL_TIMEOUT = 300
 PREVIEW_RENDER_WAIT = 10
+SCROLL_STEP_PX = 400
+SCROLL_DELAY_MS = 500
+SCROLL_FINISH_WAIT_MS = 2500
 
 
 def _build_lovable_url(prompt: str, image_url: str | None = None) -> str:
@@ -189,8 +193,105 @@ def _find_preview_iframe(page):
     return None, None
 
 
-def _take_lovable_screenshot(page) -> bytes:
-    """Pollt bis der Preview-iframe erscheint, dann Screenshot davon."""
+def _extract_preview_url_from_iframe(iframe_el, page_url: str) -> str | None:
+    """Extrahiert die absolute Preview-URL aus dem iframe src."""
+    src = iframe_el.get_attribute("src")
+    if not src or not src.strip():
+        return None
+    src = src.strip()
+    if src.startswith(("http://", "https://")):
+        return src
+    if src.startswith(("blob:", "data:", "about:", "javascript:")):
+        return None
+    return urljoin(page_url, src)
+
+
+def _preview_urls_from_project_url(lovable_url: str) -> list[str]:
+    """Konstruiert mögliche Lovable-Preview-URLs aus der Projekt-URL."""
+    match = re.search(r"/projects/([a-fA-F0-9\-]+)", lovable_url)
+    if not match:
+        return []
+    project_id = match.group(1)
+    return [
+        f"https://id-preview--{project_id}.lovable.app/",
+        f"https://preview-{project_id}.lovable.app/",
+    ]
+
+
+def _scroll_page_to_trigger_lazy_load(preview_page, distance: int, delay_ms: int) -> None:
+    """
+    Scrollt die Seite schrittweise durch, um lazy-loading Content zu laden.
+    - Längere Pausen pro Schritt, damit Content Zeit zum Rendern hat
+    - scrollHeight wird dynamisch neu ermittelt (wächst bei nachlademdem Content)
+    - Stoppt erst, wenn unten angekommen und Höhe stabil
+    """
+    preview_page.evaluate(
+        """async ({distance, delayMs}) => {
+            await new Promise((resolve) => {
+                let previousScrollHeight = 0;
+                let timesStable = 0;
+                const step = () => {
+                    window.scrollBy(0, distance);
+                    const sh = Math.max(
+                        document.body.scrollHeight,
+                        document.documentElement.scrollHeight
+                    );
+                    const atBottom = window.scrollY + window.innerHeight >= sh - 2;
+                    if (atBottom) {
+                        if (sh === previousScrollHeight) {
+                            timesStable++;
+                            if (timesStable >= 2) {
+                                window.scrollTo(0, 0);
+                                resolve();
+                                return;
+                            }
+                        } else {
+                            timesStable = 0;
+                        }
+                        previousScrollHeight = sh;
+                    }
+                    setTimeout(step, delayMs);
+                };
+                setTimeout(step, delayMs);
+            });
+        }""",
+        {"distance": distance, "delayMs": delay_ms},
+    )
+
+
+def _full_page_screenshot_of_preview(page, preview_url: str, context) -> bytes | None:
+    """
+    Öffnet die Preview-URL in einem neuen Tab und macht einen Full-Page-Screenshot.
+    Nur die Webseite, kein Lovable-Menü. Scrollt vorher durch die Seite, um
+    lazy-loading Content unter dem ersten Frame zu laden.
+    """
+    try:
+        preview_page = context.new_page()
+        preview_page.goto(preview_url, wait_until="load", timeout=45000)
+        preview_page.wait_for_timeout(2000)
+
+        try:
+            _scroll_page_to_trigger_lazy_load(preview_page, SCROLL_STEP_PX, SCROLL_DELAY_MS)
+            preview_page.wait_for_timeout(SCROLL_FINISH_WAIT_MS)
+            _scroll_page_to_trigger_lazy_load(preview_page, SCROLL_STEP_PX, SCROLL_DELAY_MS)
+            preview_page.wait_for_timeout(SCROLL_FINISH_WAIT_MS)
+        except Exception as e:
+            print(f"  Scroll fehlgeschlagen, Screenshot trotzdem: {e}", file=sys.stderr)
+
+        screenshot = preview_page.screenshot(full_page=True, type="png")
+        preview_page.close()
+        return screenshot
+    except Exception as e:
+        print(f"  Full-Page-Screenshot der Preview-URL fehlgeschlagen: {e}", file=sys.stderr)
+        return None
+
+
+def _take_lovable_screenshot(page, context, lovable_url: str | None = None) -> bytes:
+    """
+    Screenshot der generierten Webseite – nur die Seite, kein Lovable-Menü.
+    Versucht zuerst die Preview-URL direkt zu öffnen für einen Full-Page-Screenshot
+    (komplette scrollbare Seite). Fallback: sichtbarer iframe-Ausschnitt.
+    """
     print(f"  Warte auf Preview-iframe (max {PREVIEW_POLL_TIMEOUT}s)...", file=sys.stderr)
     waited = 0
 
@@ -203,9 +304,24 @@ def _take_lovable_screenshot(page) -> bytes:
             print(f"  Preview-iframe gefunden nach {waited}s ({selector})", file=sys.stderr)
             print(f"  Warte {PREVIEW_RENDER_WAIT}s auf vollstaendiges Rendering...", file=sys.stderr)
             page.wait_for_timeout(PREVIEW_RENDER_WAIT * 1000)
+
+            preview_url = _extract_preview_url_from_iframe(el, page.url)
+            urls_to_try = [preview_url] if preview_url and preview_url.startswith("http") else []
+            if not urls_to_try and lovable_url:
+                urls_to_try = _preview_urls_from_project_url(lovable_url)
+
+            for url in urls_to_try:
+                if not url or not url.startswith("http"):
+                    continue
+                print(f"  Preview-URL direkt oeffnen: {url[:80]}...", file=sys.stderr)
+                screenshot = _full_page_screenshot_of_preview(page, url, context)
+                if screenshot:
+                    print("  Full-Page-Screenshot der Webseite erstellt (ohne Lovable-Menue)", file=sys.stderr)
+                    return screenshot
+
             try:
                 screenshot = el.screenshot(type="png")
-                print("  Preview-Screenshot erstellt", file=sys.stderr)
+                print("  Preview-Screenshot erstellt (Fallback: sichtbarer Ausschnitt)", file=sys.stderr)
                 return screenshot
             except Exception as e:
                 print(f"  Screenshot des iframes fehlgeschlagen: {e}", file=sys.stderr)
@@ -214,7 +330,6 @@ def _take_lovable_screenshot(page) -> bytes:
             print(f"  [{waited}s] Preview-iframe noch nicht gefunden", file=sys.stderr)
             _log_page_state(page, f"{waited}s")
 
-    # Timeout: Logge Zustand und mache Fullpage-Screenshot
     print(f"  Preview-Timeout nach {waited}s", file=sys.stderr)
     _log_page_state(page, "timeout")
     print("  Fallback: Screenshot der gesamten Seite", file=sys.stderr)
@@ -304,8 +419,8 @@ def create_lovable_project(analysis_id: int) -> dict:
                     f"Letzte URL: {final_url}"
                 )
 
-        # Screenshot der generierten Seite machen
-        screenshot_bytes = _take_lovable_screenshot(page)
+        # Screenshot der generierten Seite machen (Full-Page, nur Webseite, kein Lovable-Menü)
+        screenshot_bytes = _take_lovable_screenshot(page, context, lovable_url)
         browser.close()
 
     # Screenshot hochladen
