@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { AlertTriangle, ExternalLink, Wand2, RefreshCw, Loader2, Copy, Check, Play, X, Send } from "lucide-react";
+import { AlertTriangle, ExternalLink, Wand2, RefreshCw, Loader2, Copy, Check, Play, Send } from "lucide-react";
 import { useProfile } from "@/lib/profile-context";
+import LovablePreviewOverlay from "./LovablePreviewOverlay";
 
 interface WorstSite {
   id: number;
@@ -14,6 +15,7 @@ interface WorstSite {
   lovable_project_url: string | null;
   lovable_screenshot_path: string | null;
   created_at: string;
+  outreach_sent_at: string | null;
 }
 
 function getScoreBadge(score: number) {
@@ -34,7 +36,6 @@ export default function WorstWebsites() {
   const [analyzeMsg, setAnalyzeMsg] = useState<string | null>(null);
   const [generatingId, setGeneratingId] = useState<number | null>(null);
   const [sendingId, setSendingId] = useState<number | null>(null);
-  const [outreachSentIds, setOutreachSentIds] = useState<Set<number>>(new Set());
   const [previewSite, setPreviewSite] = useState<WorstSite | null>(null);
 
   const fetchWorst = useCallback(async () => {
@@ -95,6 +96,7 @@ export default function WorstWebsites() {
       };
       setSites((prev) => prev.map((s) => (s.id === site.id ? updated : s)));
       setPreviewSite(updated);
+      window.dispatchEvent(new CustomEvent("projects-updated"));
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Fehler";
       setAnalyzeMsg(`Lovable-Fehler: ${msg}`);
@@ -122,7 +124,15 @@ export default function WorstWebsites() {
         }),
       });
       if (!res.ok) throw new Error(`Webhook ${res.status}`);
-      setOutreachSentIds((prev) => new Set(prev).add(site.id));
+      const updateRes = await fetch("/api/outreach-sent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ website_analysis_id: site.id }),
+      });
+      if (updateRes.ok) {
+        fetchWorst();
+        window.dispatchEvent(new CustomEvent("projects-updated"));
+      }
       setAnalyzeMsg(`Outreach gestartet für ${site.url.replace(/^https?:\/\/(www\.)?/, "")}`);
     } catch (err) {
       setAnalyzeMsg(err instanceof Error ? err.message : "Webhook-Fehler");
@@ -320,7 +330,7 @@ export default function WorstWebsites() {
                       <button
                         type="button"
                         onClick={() => sendToWebhook(site)}
-                        disabled={sendingId !== null || outreachSentIds.has(site.id)}
+                        disabled={sendingId !== null || !!site.outreach_sent_at}
                         className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         {sendingId === site.id ? (
@@ -330,7 +340,7 @@ export default function WorstWebsites() {
                         )}
                         {sendingId === site.id
                           ? "Wird gesendet..."
-                          : outreachSentIds.has(site.id)
+                          : !!site.outreach_sent_at
                             ? "Outreach gesendet"
                             : "Outreach starten"}
                       </button>
@@ -374,52 +384,13 @@ export default function WorstWebsites() {
           })}
         </div>
 
-        {/* Lovable Preview Overlay */}
         {previewSite && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="relative mx-4 flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-900">
-              <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-700">
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-                    Lovable-Vorschau: {previewSite.url.replace(/^https?:\/\/(www\.)?/, "")}
-                  </h3>
-                  {previewSite.lovable_project_url && (
-                    <a
-                      href={previewSite.lovable_project_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1 flex items-center gap-1 text-sm text-violet-600 hover:underline dark:text-violet-400"
-                    >
-                      In Lovable oeffnen
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPreviewSite(null)}
-                  className="ml-4 rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-800">
-                {previewSite.lovable_screenshot_path ? (
-                  <img
-                    src={previewSite.lovable_screenshot_path}
-                    alt="Lovable-Vorschau"
-                    className="mx-auto max-w-full"
-                  />
-                ) : (
-                  <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-                    <p className="max-w-2xl text-sm text-zinc-700 dark:text-zinc-300">
-                      Kein Screenshot verfuegbar.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <LovablePreviewOverlay
+            url={previewSite.url}
+            lovable_project_url={previewSite.lovable_project_url}
+            lovable_screenshot_path={previewSite.lovable_screenshot_path}
+            onClose={() => setPreviewSite(null)}
+          />
         )}
       </div>
     </section>

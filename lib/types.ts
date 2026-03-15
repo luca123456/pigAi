@@ -15,6 +15,9 @@ export interface Project {
   category: string;
   status: ProjectStatus;
   score?: number;
+  url?: string;
+  lovable_project_url?: string | null;
+  lovable_screenshot_path?: string | null;
 }
 
 export interface SentRequest {

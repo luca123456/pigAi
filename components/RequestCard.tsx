@@ -25,9 +25,11 @@ export default function RequestCard({ request }: RequestCardProps) {
           <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">
             {request.businessName}
           </h3>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            {request.city} · {request.category}
-          </p>
+          {(request.city || request.category) && (
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              {[request.city, request.category].filter(Boolean).join(" · ")}
+            </p>
+          )}
         </div>
         <div className="flex flex-col gap-1 text-sm sm:items-end">
           <time
